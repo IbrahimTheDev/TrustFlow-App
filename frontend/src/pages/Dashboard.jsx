@@ -7,14 +7,15 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
-import { Heart, Plus, Settings, LogOut, MoreVertical, ExternalLink, Copy, Trash2, Loader2, User } from 'lucide-react';
+// ✅ Added Code, Layout, Palette icons
+import { Heart, Plus, Settings, LogOut, MoreVertical, ExternalLink, Copy, Trash2, Loader2, Code, Layout, Palette } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { v4 as uuidv4 } from 'uuid';
 import ProfileModal from '@/components/ProfileModal';
+import UserProfileImage from '@/components/UserProfileImage';
 
 const Dashboard = () => {
   const { user, profile, signOut, loading: authLoading, refreshProfile } = useAuth();
@@ -26,6 +27,13 @@ const Dashboard = () => {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newSpaceName, setNewSpaceName] = useState('');
   const [creating, setCreating] = useState(false);
+  
+  // ✅ NEW: Embed Modal State
+  const [embedDialogOpen, setEmbedDialogOpen] = useState(false);
+  const [selectedSlug, setSelectedSlug] = useState('');
+  const [embedTheme, setEmbedTheme] = useState('light');
+  const [embedLayout, setEmbedLayout] = useState('grid');
+
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -153,12 +161,45 @@ const Dashboard = () => {
     });
   };
 
+  // ✅ NEW: Embed Logic
+  const openEmbedModal = (slug) => {
+    setSelectedSlug(slug);
+    setEmbedTheme('light');
+    setEmbedLayout('grid');
+    setEmbedDialogOpen(true);
+  };
+
+  const getEmbedCode = () => {
+    const origin = window.location.origin;
+    const queryParams = [];
+    if (embedTheme !== 'light') queryParams.push(`theme=${embedTheme}`);
+    if (embedLayout !== 'grid') queryParams.push(`layout=${embedLayout}`);
+    
+    const queryString = queryParams.length > 0 ? `?${queryParams.join('&')}` : '';
+    const src = `${origin}/embed/${selectedSlug}${queryString}`;
+
+    return `<iframe 
+  src="${src}" 
+  width="100%" 
+  height="600" 
+  frameborder="0" 
+  scrolling="yes"
+></iframe>`;
+  };
+
+  const copyEmbedCode = () => {
+    navigator.clipboard.writeText(getEmbedCode());
+    toast({
+      title: 'Code Copied',
+      description: 'Paste this into your HTML.',
+    });
+  };
+
   const handleSignOut = async () => {
     await signOut();
     navigate('/');
   };
 
-  // Show loading only during initial auth check, not during data fetch
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -167,9 +208,8 @@ const Dashboard = () => {
     );
   }
 
-  // Redirect if not logged in
   if (!user) {
-    return null; // Will redirect via useEffect
+    return null; 
   }
 
   return (
@@ -186,66 +226,50 @@ const Dashboard = () => {
             </span>
           </Link>
 
-{/* --- START OF PROFILE DROPDOWN --- */}
-            <div className="relative ml-2">
-              {/* ✅ NEW CODE: Handles 404s and Empty URLs automatically */}
-                <button 
-                  onClick={() => setIsProfileOpen(!isProfileOpen)}
-                  className="rounded-full focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 transition-all"
-                >
-                  <Avatar className="w-9 h-9 border border-violet-200 dark:border-violet-800">
-                    {/* 1. Try to load the image */}
-                    <AvatarImage 
-                      src={profile?.avatar_url} 
-                      alt={profile?.full_name || "User"} 
-                      className="object-cover"
-                    />
-                    
-                    {/* 2. If image fails or is missing, show this Icon */}
-                    <AvatarFallback className="bg-violet-100 dark:bg-violet-900/30 text-violet-600">
-                      <User className="w-5 h-5" />
-                    </AvatarFallback>
-                  </Avatar>
-                </button>
-              {/* Dropdown Menu */}
-              {isProfileOpen && (
-                <>
-                  {/* Invisible backdrop to close menu when clicking outside */}
-                  <div className="fixed inset-0 z-40" onClick={() => setIsProfileOpen(false)} />
-                  
-                  <div className="absolute right-0 top-12 w-60 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-50 overflow-hidden">
-                    {/* User Info Header */}
-                    <div className="p-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50">
-                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
-                        {profile?.full_name || 'User'}
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                        {user?.email}
-                      </p>
-                    </div>
-                    
-                    {/* Menu Items */}
-                    <div className="p-1.5 space-y-1">
-                      <button 
-                        onClick={() => { setIsProfileOpen(false); setIsProfileModalOpen(true); }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-violet-50 dark:hover:bg-violet-900/20 hover:text-violet-600 dark:hover:text-violet-400 rounded-lg transition-colors text-left"
-                      >
-                        <Settings className="w-4 h-4" />
-                        Profile Settings
-                      </button>
-                       <button 
-                        onClick={() => signOut()} 
-                        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors text-left"
-                      >
-                        <LogOut className="w-4 h-4" />
-                        Sign Out
-                      </button>
-                    </div>
+          <div className="relative ml-2">
+            <button 
+              onClick={() => setIsProfileOpen(!isProfileOpen)}
+              className="rounded-full focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 transition-all"
+            >
+              <UserProfileImage 
+                src={profile?.avatar_url} 
+                alt={profile?.full_name || "User"} 
+                className="w-9 h-9 border border-violet-200 dark:border-violet-800"
+                iconClassName="w-5 h-5"
+              />
+            </button>
+            {isProfileOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setIsProfileOpen(false)} />
+                <div className="absolute right-0 top-12 w-60 bg-white dark:bg-slate-800 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 z-50 overflow-hidden">
+                  <div className="p-4 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50">
+                    <p className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
+                      {profile?.full_name || 'User'}
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                      {user?.email}
+                    </p>
                   </div>
-                </>
-              )}
-            </div>
-            {/* --- END OF PROFILE DROPDOWN --- */}
+                  <div className="p-1.5 space-y-1">
+                    <button 
+                      onClick={() => { setIsProfileOpen(false); setIsProfileModalOpen(true); }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-violet-50 dark:hover:bg-violet-900/20 hover:text-violet-600 dark:hover:text-violet-400 rounded-lg transition-colors text-left"
+                    >
+                      <Settings className="w-4 h-4" />
+                      Profile Settings
+                    </button>
+                    <button 
+                      onClick={() => handleSignOut()} 
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors text-left"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      Sign Out
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
@@ -368,6 +392,13 @@ const Dashboard = () => {
                           <ExternalLink className="w-4 h-4 mr-2" />
                           Open form
                         </DropdownMenuItem>
+                        
+                        {/* ✅ NEW: Embed Option */}
+                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openEmbedModal(space.slug); }}>
+                          <Code className="w-4 h-4 mr-2" />
+                          Embed Widget
+                        </DropdownMenuItem>
+
                         <DropdownMenuSeparator />
                         <DropdownMenuItem 
                           onClick={(e) => { e.stopPropagation(); deleteSpace(space.id); }}
@@ -388,7 +419,6 @@ const Dashboard = () => {
               </motion.div>
             ))}
 
-            {/* Create New Space Card */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -409,7 +439,83 @@ const Dashboard = () => {
           </div>
         )}
       </main>
-      {/* --- STEP 4: PROFILE MODAL COMPONENT --- */}
+
+      {/* ✅ NEW: Embed Code Dialog with Dynamic Options */}
+      <Dialog open={embedDialogOpen} onOpenChange={setEmbedDialogOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Embed Wall of Love</DialogTitle>
+            <DialogDescription>
+              Customize your widget and copy the code to your website.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {/* Options Grid */}
+          <div className="grid grid-cols-2 gap-4 py-2">
+            <div className="space-y-2">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                    <Layout className="w-3 h-3" /> Layout
+                </Label>
+                <div className="flex gap-2">
+                    {['grid', 'masonry', 'carousel'].map((l) => (
+                        <button 
+                            key={l}
+                            onClick={() => setEmbedLayout(l)}
+                            className={`px-3 py-2 text-sm rounded-md border transition-all flex-1 ${
+                                embedLayout === l 
+                                ? 'bg-violet-100 border-violet-500 text-violet-700 font-medium dark:bg-violet-900/40 dark:text-violet-300' 
+                                : 'bg-transparent border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800'
+                            }`}
+                        >
+                            {l.charAt(0).toUpperCase() + l.slice(1)}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            <div className="space-y-2">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                    <Palette className="w-3 h-3" /> Theme
+                </Label>
+                <div className="flex gap-2">
+                    {['light', 'dark'].map((t) => (
+                        <button 
+                            key={t}
+                            onClick={() => setEmbedTheme(t)}
+                            className={`px-3 py-2 text-sm rounded-md border transition-all flex-1 ${
+                                embedTheme === t
+                                ? 'bg-violet-100 border-violet-500 text-violet-700 font-medium dark:bg-violet-900/40 dark:text-violet-300' 
+                                : 'bg-transparent border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800'
+                            }`}
+                        >
+                            {t.charAt(0).toUpperCase() + t.slice(1)}
+                        </button>
+                    ))}
+                </div>
+            </div>
+          </div>
+
+          {/* Code Preview */}
+          <div className="mt-4 relative group">
+            <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <Button size="sm" variant="secondary" onClick={copyEmbedCode} className="h-8 shadow-sm">
+                    <Copy className="w-3 h-3 mr-2" /> Copy Code
+                </Button>
+            </div>
+            <pre className="bg-slate-950 text-slate-50 p-4 rounded-lg text-xs font-mono overflow-x-auto border border-slate-800 shadow-inner">
+                {getEmbedCode()}
+            </pre>
+          </div>
+          
+          <div className="mt-2 bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-lg border border-yellow-200 dark:border-yellow-900/50">
+             <p className="text-xs text-yellow-800 dark:text-yellow-200 flex items-start gap-2">
+                <span className="text-base">💡</span> 
+                Tip: You can adjust the <code>height</code> or <code>width</code> in the HTML to fit your website's container perfectly.
+             </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <ProfileModal 
         isOpen={isProfileModalOpen} 
         onClose={() => setIsProfileModalOpen(false)}

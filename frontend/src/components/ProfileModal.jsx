@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Camera, Mail, User, Loader2, AlertCircle } from 'lucide-react';
+import { X, Camera, Mail, Loader2, AlertCircle } from 'lucide-react'; // Removed 'User' icon import as it's inside UserProfileImage now
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
+import UserProfileImage from '@/components/UserProfileImage'; // <--- 1. IMPORT ADDED
 
 // Helper: Aggressively suppress Codespaces environment errors
 const safeSupabaseCall = async (promise) => {
@@ -13,7 +14,6 @@ const safeSupabaseCall = async (promise) => {
     return await promise;
   } catch (err) {
     const msg = String(err?.message || err);
-    // If it's the known "proxy" crash, ignore it and return a fake success
     if (
       msg.includes("body stream") || 
       msg.includes("Failed to execute") || 
@@ -22,7 +22,6 @@ const safeSupabaseCall = async (promise) => {
       console.warn("Supabase stream error suppressed (Action likely succeeded)");
       return { data: null, error: null }; 
     }
-    // If it's any other crash, re-throw it
     throw err;
   }
 };
@@ -46,7 +45,6 @@ const ProfileModal = ({ isOpen, onClose, user, profile, onProfileUpdate }) => {
   const fileInputRef = useRef(null);
   const { toast } = useToast();
 
-  // Reset state ONLY when modal opens
   useEffect(() => {
     if (isOpen) {
         setFullName(profile?.full_name || '');
@@ -61,12 +59,11 @@ const ProfileModal = ({ isOpen, onClose, user, profile, onProfileUpdate }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
-  // --- THIS WAS MISSING PREVIOUSLY ---
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
     if (file) {
       setAvatarFile(file);
-      setAvatarUrl(URL.createObjectURL(file)); // Preview
+      setAvatarUrl(URL.createObjectURL(file)); // Preview logic works perfectly with UserProfileImage
     }
   };
 
@@ -75,9 +72,8 @@ const ProfileModal = ({ isOpen, onClose, user, profile, onProfileUpdate }) => {
     setEmailError('');
 
     try {
-      // --- PART 1: CHECK FOR DUPLICATE EMAIL (Pre-check) ---
+      // --- PART 1: CHECK FOR DUPLICATE EMAIL ---
       if (email !== user.email) {
-        // We use the RPC function we created to check duplicates safely
         const { data: emailExists, error: rpcError } = await safeSupabaseCall(
             supabase.rpc('check_email_exists', { email_to_check: email })
         );
@@ -87,7 +83,7 @@ const ProfileModal = ({ isOpen, onClose, user, profile, onProfileUpdate }) => {
         if (emailExists) {
             setEmailError("This email is already registered.");
             setLoading(false);
-            return; // STOP HERE.
+            return;
         }
       }
 
@@ -109,7 +105,7 @@ const ProfileModal = ({ isOpen, onClose, user, profile, onProfileUpdate }) => {
         uploadedAvatarUrl = publicUrl;
       }
 
-      // --- PART 3: SAVE PROFILE (Name/Photo) ---
+      // --- PART 3: SAVE PROFILE ---
       const updates = {
         id: user.id,
         full_name: fullName,
@@ -130,7 +126,6 @@ const ProfileModal = ({ isOpen, onClose, user, profile, onProfileUpdate }) => {
         
         if (error) throw error;
 
-        // Success: Switch to OTP View
         setNewEmailToVerify(email);
         setIsEmailChangePending(true);
         toast({
@@ -141,7 +136,6 @@ const ProfileModal = ({ isOpen, onClose, user, profile, onProfileUpdate }) => {
         return; 
       }
 
-      // DONE
       toast({ title: "Profile updated successfully!" });
       if (onProfileUpdate) await onProfileUpdate();
       setIsEditing(false);
@@ -210,15 +204,17 @@ const ProfileModal = ({ isOpen, onClose, user, profile, onProfileUpdate }) => {
             </button>
             <div className="absolute -bottom-12 left-1/2 -translate-x-1/2">
               <div className="relative group">
+                
+                {/* --- 2. UPDATED PROFILE IMAGE LOGIC --- */}
                 <div className="w-24 h-24 rounded-full border-4 border-white dark:border-gray-900 overflow-hidden bg-slate-100">
-                   {avatarUrl ? (
-                     <img src={avatarUrl} alt="Profile" className="w-full h-full object-cover" />
-                   ) : (
-                     <div className="w-full h-full flex items-center justify-center bg-violet-100 text-violet-600">
-                        <User className="w-10 h-10" />
-                     </div>
-                   )}
+                   <UserProfileImage 
+                      src={avatarUrl} // Shows URL or local Preview blob
+                      alt="Profile" 
+                      className="w-full h-full"
+                      iconClassName="w-10 h-10" // Bigger icon for this modal
+                   />
                 </div>
+
                 {isEditing && !isEmailChangePending && (
                   <button 
                     onClick={() => fileInputRef.current?.click()}

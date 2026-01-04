@@ -14,6 +14,7 @@ import WallOfLove from "@/pages/WallOfLove";
 import ForgotPassword from "./pages/ForgotPassword";
 
 
+
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -47,7 +48,7 @@ function AppRoutes() {
       <Route path="/submit/:slug" element={<SubmitTestimonial />} />
       
       {/* Widget Embed Route */}
-      <Route path="/widget" element={<WallOfLove />} />
+      <Route path="/embed/:slug" element={<WallOfLove />} />
       
       {/* Protected Routes */}
       <Route

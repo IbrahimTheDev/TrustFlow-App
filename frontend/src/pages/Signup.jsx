@@ -8,7 +8,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Separator } from '@/components/ui/separator';
 import { useAuth } from '@/contexts/AuthContext';
 import { signUpWithEmail, verifySignupOtp, signInWithGoogle, signInWithGithub, supabase } from '@/lib/supabase';
-// Added AlertCircle for error icons
 import { Heart, Github, Loader2, Mail, AlertCircle } from 'lucide-react'; 
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -27,7 +26,7 @@ const Signup = () => {
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // --- NEW: Error States ---
+  // --- Error States ---
   const [error, setError] = useState(''); // General submit error
   const [fieldErrors, setFieldErrors] = useState({
     fullName: '',
@@ -38,6 +37,7 @@ const Signup = () => {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+
   useEffect(() => {
     const ensureCleanSession = async () => {
       // Only clear if we are starting a fresh signup (not verifying OTP)
@@ -55,7 +55,7 @@ const Signup = () => {
     }
   }, [user, authLoading, navigate, step]);
 
-  // --- NEW: Validation Helpers ---
+  // --- Validation Helpers ---
   const clearFieldError = (field) => {
     setFieldErrors(prev => ({ ...prev, [field]: '' }));
     setError(''); // Clear general error too
@@ -76,7 +76,7 @@ const Signup = () => {
     }
   };
 
-const handleSignup = async (e) => {
+  const handleSignup = async (e) => {
     e.preventDefault();
     setError('');
 
@@ -101,21 +101,25 @@ const handleSignup = async (e) => {
     setLoading(true);
 
     try {
-      // 2. Database Check (The new Pre-check)
+      // 2. Database Check (Pre-check for duplicate email)
       const { data: emailExists, error: rpcError } = await supabase.rpc('check_email_exists', { 
         email_to_check: email 
       });
 
-      if (rpcError) throw rpcError;
-
-      if (emailExists) {
-        setFieldErrors(prev => ({ ...prev, email: "This email is already registered." }));
-        setLoading(false);
-        return; // STOP here if email exists
+      // If the RPC check fails (system error), we throw a generic system error
+      if (rpcError) {
+         console.error("RPC Error:", rpcError);
+         throw new Error("system_error");
       }
 
-      // 3. Perform Signup (Using your STANDARD helper)
-      // We removed 'createClient' and 'tempSupabase' because the DB trigger fixes the root issue.
+      if (emailExists) {
+        // Specific User Error: Duplicate Email
+        setFieldErrors(prev => ({ ...prev, email: "This email is already registered." }));
+        setLoading(false);
+        return; // STOP here
+      }
+
+      // 3. Perform Signup
       const { error } = await signUpWithEmail(email, password, fullName);
 
       if (error) throw error;
@@ -127,13 +131,43 @@ const handleSignup = async (e) => {
       });
 
     } catch (error) {
-      console.error(error);
-      let msg = error.message;
+      console.error("Signup Error:", error);
+      
+      const msg = error.message?.toLowerCase() || "";
 
-      if (msg.includes("body stream") || msg.includes("json") || msg.includes("Failed to execute")) {
-         msg = "An error occurred. Please try again.";
+      // --- SMART ERROR HANDLING ---
+      
+      // Case A: System Errors (User can't fix these)
+      if (
+        msg.includes("fetch") || 
+        msg.includes("network") || 
+        msg.includes("upstream") ||
+        msg.includes("connection") ||
+        msg.includes("system_error") ||
+        msg.includes("body stream") || // Supabase client glitch
+        msg.includes("json") || // Supabase client glitch
+        msg.includes("failed to execute")
+      ) {
+        setError("An error occurred. Please try again later.");
       } 
-      setError(msg);
+      
+      // Case B: Specific User Errors (User CAN fix these)
+      else if (msg.includes("password")) {
+        setFieldErrors(prev => ({ ...prev, password: "Please choose a stronger password." }));
+      }
+      else if (msg.includes("valid email")) {
+        setFieldErrors(prev => ({ ...prev, email: "Please enter a valid email address." }));
+      }
+      // Just in case the RPC check missed it (race condition)
+      else if (msg.includes("already registered") || msg.includes("unique constraint")) {
+         setFieldErrors(prev => ({ ...prev, email: "This email is already registered." }));
+      }
+      
+      // Case C: The "Catch-All" Fallback
+      else {
+        setError("An error occurred. Please try again.");
+      }
+
     } finally {
       setLoading(false);
     }
@@ -212,16 +246,16 @@ const handleSignup = async (e) => {
           </CardHeader>
           <CardContent>
             {step === 'otp' ? (
-              /* OTP FORM VIEW (Unchanged Logic) */
+              /* OTP FORM VIEW */
               <motion.div 
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 className="space-y-6"
               >
                 <div className="flex justify-center py-4">
-                   <div className="bg-violet-100 dark:bg-violet-900/30 p-4 rounded-full">
+                    <div className="bg-violet-100 dark:bg-violet-900/30 p-4 rounded-full">
                       <Mail className="w-8 h-8 text-violet-600" />
-                   </div>
+                    </div>
                 </div>
 
                 <form onSubmit={handleVerifyOtp} className="space-y-6">
@@ -264,7 +298,7 @@ const handleSignup = async (e) => {
                 </form>
               </motion.div>
             ) : (
-              /* SIGNUP FORM VIEW (Updated with Validation) */
+              /* SIGNUP FORM VIEW */
               <motion.div
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
