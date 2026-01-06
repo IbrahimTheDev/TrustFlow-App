@@ -16,17 +16,21 @@ import { supabase } from '@/lib/supabase';
 import { 
   Heart, HeartOff, ArrowLeft, Copy, ExternalLink, Video, FileText, 
   Star, Trash2, Play, Loader2, Settings, Code, Inbox, Edit,
-  ChevronLeft, ChevronRight 
+  ChevronLeft, ChevronRight, Layout, Palette, BoxSelect, Sparkles, 
+  Square, Circle, MousePointerClick, Zap, Check, X,
+  Grid3X3, GalleryHorizontal, StretchHorizontal, AlignJustify,
+  Gauge, RefreshCw
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { Separator } from '@/components/ui/separator';
 
 // Constants to match WallOfLove exactly
 const CARD_WIDTH = 300; 
-const GAP = 24; // Gap-6 (24px)
-const PADDING_X = 48; // SpaceOverview Card has p-6 (24px * 2 = 48px)
+const GAP = 24; 
+const PADDING_X = 48; 
 
 // --- Local Definition of StylishVideoPlayer ---
-const StylishVideoPlayer = ({ videoUrl }) => {
+const StylishVideoPlayer = ({ videoUrl, corners = 'rounded-xl' }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const videoRef = useRef(null);
 
@@ -37,7 +41,7 @@ const StylishVideoPlayer = ({ videoUrl }) => {
   };
 
   return (
-    <div className="relative rounded-xl overflow-hidden bg-black shadow-md ring-1 ring-black/5 aspect-video mb-4">
+    <div className={`relative overflow-hidden bg-black shadow-md ring-1 ring-black/5 aspect-video mb-4 ${corners}`}>
       <video
         ref={videoRef}
         src={videoUrl}
@@ -76,6 +80,44 @@ const StylishVideoPlayer = ({ videoUrl }) => {
   );
 };
 
+// --- Premium Toggle Component ---
+const PremiumToggle = ({ options, current, onChange, id }) => (
+  <div className="flex p-1 bg-slate-100 dark:bg-slate-800 rounded-lg relative isolate">
+    {options.map((opt) => {
+      const Icon = opt.icon;
+      const isActive = current === opt.value;
+      return (
+        <button
+          key={opt.value}
+          onClick={() => onChange(opt.value)}
+          type="button"
+          className={`
+            relative flex-1 flex items-center justify-center gap-2 py-2 px-3 text-xs font-medium transition-colors z-10
+            ${isActive ? 'text-violet-700 dark:text-violet-300' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}
+          `}
+        >
+          {isActive && (
+            <motion.span
+              layoutId={`active-pill-${id}`}
+              className="absolute inset-0 bg-white dark:bg-slate-700 rounded-md shadow-sm border border-black/5 dark:border-white/5 -z-10"
+              transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+            />
+          )}
+          {Icon && <Icon className="w-3.5 h-3.5" />}
+          <span className="capitalize whitespace-nowrap">{opt.label}</span>
+        </button>
+      );
+    })}
+  </div>
+);
+
+const SectionHeader = ({ icon: Icon, title }) => (
+  <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+    <Icon className="w-3.5 h-3.5" />
+    {title}
+  </div>
+);
+
 const SpaceOverview = () => {
   const { spaceId } = useParams();
   const { user, loading: authLoading } = useAuth();
@@ -93,6 +135,9 @@ const SpaceOverview = () => {
   const [visibleCount, setVisibleCount] = useState(1);
   const [maskWidth, setMaskWidth] = useState('100%');
   const containerRef = useRef(null);
+  
+  // Animation Replay Trigger
+  const [replayTrigger, setReplayTrigger] = useState(0);
 
   // Form edit state
   const [formSettings, setFormSettings] = useState({
@@ -101,10 +146,15 @@ const SpaceOverview = () => {
     collect_star_rating: true,
   });
 
-  // Widget settings
+  // Premium Widget settings
   const [widgetSettings, setWidgetSettings] = useState({
-    layout: 'grid',
-    theme: 'light',
+    layout: 'grid',       // grid, masonry, carousel, list
+    theme: 'light',       // light, dark, transparent
+    corners: 'smooth',    // sharp, smooth, round
+    shadow: 'medium',     // none, light, medium, strong
+    border: true,
+    animation: 'fade',    // fade, slideUp, slideDown, scale, pop, flip, elastic, none
+    speed: 'normal'       // slow, normal, fast
   });
 
   useEffect(() => {
@@ -121,6 +171,7 @@ const SpaceOverview = () => {
 
   // --- Strict Fit Calculation (Matches WallOfLove) ---
   useEffect(() => {
+    // We only need specific calculations for Carousel
     if (widgetSettings.layout !== 'carousel' || !containerRef.current) {
       setMaskWidth('100%');
       return;
@@ -145,12 +196,19 @@ const SpaceOverview = () => {
       }
     };
 
-    const observer = new ResizeObserver(updateDimensions);
-    observer.observe(containerRef.current);
+    // Initial calculation
     updateDimensions();
 
+    const observer = new ResizeObserver(updateDimensions);
+    observer.observe(containerRef.current);
+
     return () => observer.disconnect();
-  }, [widgetSettings.layout, activeTab]); // Re-calc when tab changes to ensure size is correct
+  }, [widgetSettings.layout, activeTab]); 
+
+  // Trigger animation replay when animation settings change
+  useEffect(() => {
+    setReplayTrigger(prev => prev + 1);
+  }, [widgetSettings.animation, widgetSettings.speed]);
 
   const fetchSpaceData = async () => {
     try {
@@ -265,14 +323,18 @@ const SpaceOverview = () => {
 
   const copyEmbedCode = () => {
     const code = `<script 
-                  src="${window.location.origin}/embed.js" 
-                  data-space-id="${spaceId}" 
-                  data-theme="${widgetSettings.theme}"
-                  data-layout="${widgetSettings.layout}">
-                  </script>
-                  <div id="trustflow-widget"></div>`;
+  src="${window.location.origin}/embed.js" 
+  data-space-id="${spaceId}" 
+  data-theme="${widgetSettings.theme}"
+  data-layout="${widgetSettings.layout}"
+  data-corners="${widgetSettings.corners}"
+  data-shadow="${widgetSettings.shadow}"
+  data-border="${widgetSettings.border}"
+  data-animation="${widgetSettings.animation}"
+  data-animation-speed="${widgetSettings.speed}">
+</script>`;
     navigator.clipboard.writeText(code);
-    toast({ title: 'Embed code copied!' });
+    toast({ title: 'Embed code copied!', description: 'Code includes all your selected customizations.' });
   };
 
   // --- Infinite Loop Navigation ---
@@ -281,7 +343,7 @@ const SpaceOverview = () => {
     const maxIndex = Math.max(0, liked.length - visibleCount);
     
     if (carouselIndex >= maxIndex) {
-      setCarouselIndex(0); // Loop to start
+      setCarouselIndex(0); 
     } else {
       setCarouselIndex(prev => prev + 1);
     }
@@ -292,34 +354,106 @@ const SpaceOverview = () => {
     const maxIndex = Math.max(0, liked.length - visibleCount);
     
     if (carouselIndex <= 0) {
-      setCarouselIndex(maxIndex); // Loop to end
+      setCarouselIndex(maxIndex); 
     } else {
       setCarouselIndex(prev => prev - 1);
     }
   };
 
-  // Helper to determine card classes based on theme
-  const getPreviewCardClasses = () => {
-    const theme = widgetSettings.theme;
-    const layout = widgetSettings.layout;
+  // --- Dynamic Style Generator ---
+  const getPreviewCardStyles = () => {
+    const { theme, layout, corners, shadow, border } = widgetSettings;
     
-    let classes = 'p-6 rounded-xl shadow-sm border transition-all hover:shadow-md';
+    let classes = 'p-6 transition-all duration-300 ';
     
-    // Theme
+    // Corners
+    if (corners === 'sharp') classes += 'rounded-none ';
+    else if (corners === 'round') classes += 'rounded-3xl ';
+    else classes += 'rounded-xl '; // smooth
+
+    // Shadow
+    if (shadow === 'none') classes += 'shadow-none ';
+    else if (shadow === 'light') classes += 'shadow-sm hover:shadow-md ';
+    else if (shadow === 'strong') classes += 'shadow-xl hover:shadow-2xl ';
+    else classes += 'shadow-md hover:shadow-lg '; // medium
+
+    // Theme & Border
     if (theme === 'dark') {
-      classes += ' bg-slate-900 border-slate-800 text-slate-100';
+      classes += 'bg-slate-900 text-slate-100 ';
+      classes += border ? 'border border-slate-800 ' : 'border-0 ';
     } else {
-      classes += ' bg-white border-slate-100 text-slate-800';
+      classes += 'bg-white text-slate-800 ';
+      classes += border ? 'border border-slate-100 ' : 'border-0 ';
     }
 
-    // Layout
+    // Layout Specifics
     if (layout === 'masonry') {
-      classes += ' break-inside-avoid mb-6 inline-block w-full';
+      classes += 'break-inside-avoid mb-6 inline-block w-full ';
     } else if (layout === 'carousel') {
-      classes += ' flex-shrink-0 w-[300px]'; 
+      classes += 'flex-shrink-0 w-[300px] '; 
+    } else if (layout === 'list') {
+      classes += 'w-full mb-4 ';
     }
 
     return classes;
+  };
+
+  // --- Animation Variants ---
+  const getAnimationVariants = () => {
+    const { animation, speed } = widgetSettings;
+    
+    // Calculate durations based on speed setting
+    const durations = {
+      slow: 0.8,
+      normal: 0.5,
+      fast: 0.3
+    };
+    const dur = durations[speed] || 0.5;
+    const stagger = speed === 'fast' ? 0.05 : 0.1;
+
+    switch(animation) {
+      case 'slideUp':
+        return {
+          hidden: { opacity: 0, y: 50 },
+          visible: (i) => ({ opacity: 1, y: 0, transition: { delay: i * stagger, duration: dur, ease: "easeOut" } })
+        };
+      case 'slideDown':
+        return {
+          hidden: { opacity: 0, y: -50 },
+          visible: (i) => ({ opacity: 1, y: 0, transition: { delay: i * stagger, duration: dur, ease: "easeOut" } })
+        };
+      case 'scale':
+        return {
+          hidden: { opacity: 0, scale: 0.8 },
+          visible: (i) => ({ opacity: 1, scale: 1, transition: { delay: i * stagger, duration: dur } })
+        };
+      case 'pop':
+        return {
+          hidden: { opacity: 0, scale: 0.5 },
+          visible: (i) => ({ opacity: 1, scale: 1, transition: { delay: i * stagger, type: 'spring', stiffness: 300, damping: 20 } })
+        };
+      case 'flip':
+        return {
+          hidden: { opacity: 0, rotateX: 90 },
+          visible: (i) => ({ opacity: 1, rotateX: 0, transition: { delay: i * stagger, duration: dur } })
+        };
+      case 'elastic':
+        return {
+          hidden: { opacity: 0, x: -100 },
+          visible: (i) => ({ opacity: 1, x: 0, transition: { delay: i * stagger, type: 'spring', bounce: 0.6 } })
+        };
+      case 'none':
+        return {
+          hidden: { opacity: 1 },
+          visible: { opacity: 1 }
+        };
+      case 'fade':
+      default:
+        return {
+          hidden: { opacity: 0 },
+          visible: (i) => ({ opacity: 1, transition: { delay: i * stagger, duration: dur } })
+        };
+    }
   };
 
   if (authLoading) {
@@ -333,25 +467,9 @@ const SpaceOverview = () => {
   if (loading || !space) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-background to-secondary/20">
-        <header className="border-b bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm sticky top-0 z-50">
-          <div className="container mx-auto px-4 py-4">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-gray-200 rounded animate-pulse" />
-              <div className="flex-1">
-                <div className="h-6 w-48 bg-gray-200 rounded animate-pulse" />
-                <div className="h-4 w-32 bg-gray-200 rounded animate-pulse mt-2" />
-              </div>
-            </div>
-          </div>
-        </header>
-        <main className="container mx-auto px-4 py-8">
+        <div className="container mx-auto px-4 py-8">
           <div className="h-10 w-64 bg-gray-200 rounded animate-pulse mb-8" />
-          <div className="space-y-4">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="h-32 bg-gray-200 rounded-lg animate-pulse" />
-            ))}
-          </div>
-        </main>
+        </div>
       </div>
     );
   }
@@ -392,11 +510,13 @@ const SpaceOverview = () => {
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="mb-8">
+          <TabsList className="mb-8 bg-white/50 dark:bg-gray-800/50 backdrop-blur p-1">
             <TabsTrigger value="inbox" className="flex items-center gap-2">
               <Inbox className="w-4 h-4" />
               Inbox
-              <Badge variant="secondary" className="ml-1">{testimonials.length}</Badge>
+              <Badge variant="secondary" className="ml-1 bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300">
+                {testimonials.length}
+              </Badge>
             </TabsTrigger>
             <TabsTrigger value="edit-form" className="flex items-center gap-2">
               <Edit className="w-4 h-4" />
@@ -425,7 +545,7 @@ const SpaceOverview = () => {
                 </div>
                 <h2 className="text-2xl font-semibold mb-2">No testimonials yet</h2>
                 <p className="text-muted-foreground mb-6">Share your collection link to start receiving testimonials.</p>
-                <Button onClick={copySubmitLink}>
+                <Button onClick={copySubmitLink} className="bg-gradient-to-r from-violet-600 to-indigo-600">
                   <Copy className="w-4 h-4 mr-2" />
                   Copy Collection Link
                 </Button>
@@ -439,7 +559,7 @@ const SpaceOverview = () => {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.05 }}
                   >
-                    <Card className={`transition-all ${testimonial.is_liked ? 'border-violet-300 dark:border-violet-700 bg-violet-50/50 dark:bg-violet-900/10' : ''}`}>
+                    <Card className={`transition-all hover:shadow-md ${testimonial.is_liked ? 'border-violet-300 dark:border-violet-700 bg-violet-50/50 dark:bg-violet-900/10' : ''}`}>
                       <CardContent className="p-6">
                         <div className="flex items-start gap-4">
                           <Avatar className="w-12 h-12">
@@ -474,7 +594,7 @@ const SpaceOverview = () => {
                               </div>
                             )}
                             {testimonial.type === 'video' ? (
-                              <Button variant="outline" onClick={() => setSelectedVideo(testimonial.video_url)}>
+                              <Button variant="outline" size="sm" onClick={() => setSelectedVideo(testimonial.video_url)}>
                                 <Play className="w-4 h-4 mr-2" />
                                 Play Video
                               </Button>
@@ -581,185 +701,258 @@ const SpaceOverview = () => {
             </div>
           </TabsContent>
 
-          {/* Widget Tab */}
-          <TabsContent value="widget">
-            <div className="grid lg:grid-cols-2 gap-8">
-              <div className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Widget Settings</CardTitle>
-                    <CardDescription>Configure your Wall of Love widget</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    <div className="space-y-2">
-                      <Label>Layout</Label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {['grid', 'masonry', 'carousel'].map((layout) => (
-                          <Button
-                            key={layout}
-                            variant={widgetSettings.layout === layout ? 'default' : 'outline'}
-                            onClick={() => {
-                              setWidgetSettings({ ...widgetSettings, layout });
-                              setCarouselIndex(0); // Reset carousel on layout change
-                            }}
-                            className="capitalize"
-                          >
-                            {layout}
-                          </Button>
-                        ))}
-                      </div>
+          {/* Widget Tab - NEW PREMIUM DESIGNER */}
+          <TabsContent value="widget" className="mt-0">
+            <div className="flex flex-col xl:flex-row gap-6 h-[calc(100vh-200px)] min-h-[800px]">
+              
+              {/* Left Column: Control Deck */}
+              <Card className="w-full xl:w-[400px] flex flex-col border-violet-100 dark:border-violet-900/20 shadow-xl shadow-violet-500/5 bg-white/80 backdrop-blur-sm overflow-hidden flex-shrink-0">
+                <CardHeader className="pb-4 border-b">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <Zap className="w-5 h-5 text-violet-600 fill-violet-100" />
+                        Widget Designer
+                      </CardTitle>
+                      <CardDescription>Customize your wall of love</CardDescription>
                     </div>
-                    <div className="space-y-2">
-                      <Label>Theme</Label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {['light', 'dark'].map((theme) => (
-                          <Button
-                            key={theme}
-                            variant={widgetSettings.theme === theme ? 'default' : 'outline'}
-                            onClick={() => setWidgetSettings({ ...widgetSettings, theme })}
-                            className="capitalize"
-                          >
-                            {theme}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Embed Code</CardTitle>
-                    <CardDescription>Add this code to your website</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="bg-gray-900 text-gray-100 p-4 rounded-lg text-sm font-mono overflow-x-auto">
-                      <code>
-                        {`<script src="${window.location.origin}/embed.js"`}<br />
-                        {`  data-space-id="${spaceId}"`}<br />
-                        {`  data-theme="${widgetSettings.theme}"`}<br />
-                        {`  data-layout="${widgetSettings.layout}">`}<br /> 
-                        {`</script>`}<br />
-                        {`<div id="trustflow-widget"></div>`}
-                      </code>
-                    </div>
-                    <Button onClick={copyEmbedCode} className="w-full mt-4">
-                      <Copy className="w-4 h-4 mr-2" />
-                      Copy Embed Code
+                    <Button size="sm" onClick={copyEmbedCode} className="bg-violet-600 hover:bg-violet-700 shadow-md shadow-violet-500/20 text-xs">
+                       <Copy className="w-3.5 h-3.5 mr-1.5" /> Copy Code
                     </Button>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Widget Preview */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Widget Preview</CardTitle>
-                  <CardDescription>{likedTestimonials.length} approved testimonials will be shown</CardDescription>
+                  </div>
                 </CardHeader>
-                <CardContent 
-                  ref={containerRef} 
-                  className={`min-h-[400px] p-6 transition-colors relative group overflow-hidden ${widgetSettings.theme === 'dark' ? 'bg-gray-950' : 'bg-gray-50'}`}
-                >
-                  {likedTestimonials.length === 0 ? (
-                    <div className={`text-center py-12 ${widgetSettings.theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                      <Star className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                      <p>No approved testimonials yet.</p>
-                      <p className="text-sm mt-2">Click the heart icon on testimonials to approve them.</p>
-                    </div>
-                  ) : (
-                    <>
-                      {/* Navigation Buttons (Only for Carousel + Hover) */}
-                      {isCarousel && likedTestimonials.length > visibleCount && (
-                        <>
-                          <button
-                            onClick={handlePrev}
-                            className="absolute left-2 top-1/2 -translate-y-1/2 z-30 h-10 w-10 rounded-full bg-white/90 dark:bg-black/90 backdrop-blur-md shadow-lg border border-gray-100 dark:border-gray-800 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center hover:scale-110 text-gray-700 dark:text-gray-200"
-                            aria-label="Scroll left"
-                          >
-                            <ChevronLeft className="h-5 w-5" />
-                          </button>
+                
+                <CardContent className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-thin">
+                  
+                  {/* Layout Section */}
+                  <div>
+                    <SectionHeader icon={Layout} title="Layout Structure" />
+                    <PremiumToggle 
+                      id="layout"
+                      current={widgetSettings.layout}
+                      onChange={(val) => { setWidgetSettings({ ...widgetSettings, layout: val }); setCarouselIndex(0); }}
+                      options={[
+                        { label: 'Grid', value: 'grid', icon: Grid3X3 },
+                        { label: 'Masonry', value: 'masonry', icon: GalleryHorizontal },
+                        { label: 'Carousel', value: 'carousel', icon: StretchHorizontal },
+                        { label: 'List', value: 'list', icon: AlignJustify },
+                      ]}
+                    />
+                  </div>
 
-                          <button
-                            onClick={handleNext}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 z-30 h-10 w-10 rounded-full bg-white/90 dark:bg-black/90 backdrop-blur-md shadow-lg border border-gray-100 dark:border-gray-800 opacity-0 group-hover:opacity-100 transition-all duration-300 flex items-center justify-center hover:scale-110 text-gray-700 dark:text-gray-200"
-                            aria-label="Scroll right"
-                          >
-                            <ChevronRight className="h-5 w-5" />
-                          </button>
-                        </>
-                      )}
+                  <Separator />
 
-                      {/* Mask Container */}
-                      <div 
-                        className="relative mx-auto transition-[width] duration-300 ease-in-out"
-                        style={isCarousel ? { width: maskWidth, overflow: 'hidden' } : { width: '100%' }}
-                      >
-                        {/* Track */}
-                        <div 
-                          className={`
-                            gap-6
-                            ${
-                              isCarousel
-                                ? 'flex transition-transform duration-500 ease-out' 
-                                : widgetSettings.layout === 'masonry'
-                                ? 'block columns-1 md:columns-2 lg:columns-3 space-y-6'
-                                : 'grid md:grid-cols-2 lg:grid-cols-3'
-                            }
-                          `}
-                          style={isCarousel ? { 
-                            transform: `translateX(-${carouselIndex * (CARD_WIDTH + GAP)}px)` 
-                          } : {}}
-                        >
-                          {/* Carousel renders ALL items to slide. Grid/Masonry renders Slice */}
-                          {(isCarousel ? likedTestimonials : likedTestimonials.slice(0, 6)).map((testimonial) => (
-                            <div 
-                              key={testimonial.id}
-                              className={getPreviewCardClasses()}
-                            >
-                              <div className="flex items-center gap-1 mb-2">
-                                {[...Array(testimonial.rating || 5)].map((_, i) => (
-                                  <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                                ))}
-                              </div>
-                              
-                              {testimonial.type === 'video' && testimonial.video_url ? (
-                                <StylishVideoPlayer videoUrl={testimonial.video_url} />
-                              ) : (
-                                <p className={`text-sm mb-4 leading-relaxed opacity-90 line-clamp-4`}>
-                                  "{testimonial.content}"
-                                </p>
-                              )}
-
-                              <div className="flex items-center gap-3 mt-auto">
-                                {testimonial.respondent_photo_url ? (
-                                  <img 
-                                    src={testimonial.respondent_photo_url} 
-                                    alt={testimonial.respondent_name}
-                                    className="w-10 h-10 rounded-full object-cover border"
-                                  />
-                                ) : (
-                                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${
-                                    widgetSettings.theme === 'dark' ? 'bg-violet-900/50 text-violet-300' : 'bg-violet-100 text-violet-600'
-                                  }`}>
-                                    {testimonial.respondent_name?.charAt(0).toUpperCase() || "?"}
-                                  </div>
-                                )}
-                                <div>
-                                  <div className="font-medium text-sm">{testimonial.respondent_name}</div>
-                                  {testimonial.respondent_role && (
-                                    <div className="text-xs opacity-70">{testimonial.respondent_role}</div>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
+                  {/* Appearance Section */}
+                  <div>
+                    <SectionHeader icon={Palette} title="Visual Appearance" />
+                    <div className="space-y-4">
+                      {/* Theme */}
+                      <div>
+                        <Label className="text-xs text-slate-500 mb-1.5 block">Color Theme</Label>
+                        <PremiumToggle 
+                          id="theme"
+                          current={widgetSettings.theme}
+                          onChange={(val) => setWidgetSettings({ ...widgetSettings, theme: val })}
+                          options={[
+                            { label: 'Light', value: 'light' },
+                            { label: 'Dark', value: 'dark' },
+                            { label: 'Transparent', value: 'transparent' },
+                          ]}
+                        />
                       </div>
-                    </>
-                  )}
+
+                      {/* Card Styling Group */}
+                      <div className="p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl border space-y-4">
+                         {/* Corners */}
+                         <div>
+                            <Label className="text-[10px] uppercase font-bold text-slate-400 mb-2 block">Card Corners</Label>
+                            <PremiumToggle 
+                              id="corners"
+                              current={widgetSettings.corners}
+                              onChange={(val) => setWidgetSettings({ ...widgetSettings, corners: val })}
+                              options={[
+                                { label: 'Sharp', value: 'sharp', icon: Square },
+                                { label: 'Smooth', value: 'smooth', icon: Circle },
+                                { label: 'Round', value: 'round', icon: Circle },
+                              ]}
+                            />
+                         </div>
+                         {/* Shadows */}
+                         <div>
+                            <Label className="text-[10px] uppercase font-bold text-slate-400 mb-2 block">Shadow Intensity</Label>
+                            <PremiumToggle 
+                              id="shadow"
+                              current={widgetSettings.shadow}
+                              onChange={(val) => setWidgetSettings({ ...widgetSettings, shadow: val })}
+                              options={[
+                                { label: 'None', value: 'none' },
+                                { label: 'Medium', value: 'medium' },
+                                { label: 'Strong', value: 'strong' },
+                              ]}
+                            />
+                         </div>
+                         {/* Border */}
+                         <div className="flex items-center justify-between pt-1">
+                            <Label className="text-[10px] uppercase font-bold text-slate-400">Show Borders</Label>
+                            <div className="flex items-center bg-white dark:bg-slate-800 rounded-full p-1 border shadow-sm">
+                               <button onClick={() => setWidgetSettings({ ...widgetSettings, border: true })} className={`w-8 h-6 rounded-full flex items-center justify-center transition-all ${widgetSettings.border ? 'bg-violet-100 text-violet-600' : 'text-slate-300'}`}><Check className="w-3.5 h-3.5" /></button>
+                               <button onClick={() => setWidgetSettings({ ...widgetSettings, border: false })} className={`w-8 h-6 rounded-full flex items-center justify-center transition-all ${!widgetSettings.border ? 'bg-red-50 text-red-500' : 'text-slate-300'}`}><X className="w-3.5 h-3.5" /></button>
+                            </div>
+                         </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Animation Section */}
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                       <SectionHeader icon={Sparkles} title="Motion & Effects" />
+                       <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-6 w-6 rounded-full bg-violet-100 text-violet-600 hover:bg-violet-200 hover:text-violet-700"
+                          onClick={() => setReplayTrigger(prev => prev + 1)}
+                          title="Replay Animation"
+                       >
+                          <RefreshCw className="h-3 w-3" />
+                       </Button>
+                    </div>
+                    
+                    <div className="space-y-4">
+                       <div>
+                          <Label className="text-xs text-slate-500 mb-1.5 block">Entrance Animation</Label>
+                          <div className="grid grid-cols-2 gap-2">
+                             {['fade', 'slideUp', 'slideDown', 'scale', 'pop', 'flip', 'elastic', 'none'].map((anim) => (
+                               <Button
+                                 key={anim}
+                                 variant={widgetSettings.animation === anim ? "default" : "outline"}
+                                 size="sm"
+                                 onClick={() => setWidgetSettings({ ...widgetSettings, animation: anim })}
+                                 className={`justify-start capitalize text-xs h-8 ${widgetSettings.animation === anim ? 'bg-violet-600 hover:bg-violet-700' : ''}`}
+                               >
+                                 {widgetSettings.animation === anim && <Sparkles className="w-3 h-3 mr-2 text-violet-200" />}
+                                 {anim.replace(/([A-Z])/g, ' $1').trim()}
+                               </Button>
+                             ))}
+                          </div>
+                       </div>
+                       
+                       <div>
+                          <Label className="text-xs text-slate-500 mb-1.5 block">Animation Speed</Label>
+                          <PremiumToggle 
+                             id="speed"
+                             current={widgetSettings.speed}
+                             onChange={(val) => setWidgetSettings({ ...widgetSettings, speed: val })}
+                             options={[
+                               { label: 'Slow', value: 'slow', icon: Gauge },
+                               { label: 'Normal', value: 'normal', icon: Gauge },
+                               { label: 'Fast', value: 'fast', icon: Zap },
+                             ]}
+                          />
+                       </div>
+                    </div>
+                  </div>
+
                 </CardContent>
               </Card>
+
+              {/* Right Column: Live Canvas */}
+              <div className="flex-1 flex flex-col min-w-0">
+                 <div className="flex items-center justify-between mb-2 px-2">
+                    <div className="flex items-center gap-2">
+                       <Badge variant="outline" className="bg-white/50 backdrop-blur border-violet-200 text-violet-700 animate-pulse">
+                          Live Preview
+                       </Badge>
+                       <span className="text-xs text-muted-foreground">{likedTestimonials.length} testimonials approved</span>
+                    </div>
+                    {isCarousel && (
+                       <div className="text-xs text-muted-foreground">Carousel Mode</div>
+                    )}
+                 </div>
+
+                 <Card className="flex-1 border-2 border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/50 overflow-hidden relative shadow-inner">
+                    <CardContent 
+                       ref={containerRef}
+                       className={`h-full w-full p-8 transition-colors duration-500 overflow-y-auto custom-scrollbar 
+                         ${widgetSettings.theme === 'dark' ? 'bg-slate-950' : widgetSettings.theme === 'transparent' ? 'bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px]' : 'bg-slate-50'}
+                       `}
+                    >
+                       {likedTestimonials.length === 0 ? (
+                         <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                           <Star className="w-16 h-16 opacity-20 mb-4" />
+                           <p>No approved testimonials yet.</p>
+                         </div>
+                       ) : (
+                         <>
+                           {/* Carousel Controls */}
+                           {isCarousel && likedTestimonials.length > visibleCount && (
+                             <>
+                               <button onClick={handlePrev} className="absolute left-4 top-1/2 -translate-y-1/2 z-30 h-10 w-10 rounded-full bg-white/90 shadow-lg flex items-center justify-center hover:scale-110 transition-all"><ChevronLeft className="w-5 h-5 text-slate-700" /></button>
+                               <button onClick={handleNext} className="absolute right-4 top-1/2 -translate-y-1/2 z-30 h-10 w-10 rounded-full bg-white/90 shadow-lg flex items-center justify-center hover:scale-110 transition-all"><ChevronRight className="w-5 h-5 text-slate-700" /></button>
+                             </>
+                           )}
+
+                           <div 
+                             key={widgetSettings.layout} // Force re-render on layout change to fix measurement bugs
+                             className="relative mx-auto transition-all duration-300"
+                             style={isCarousel ? { width: maskWidth, overflow: 'hidden' } : { width: '100%', maxWidth: '1000px' }}
+                           >
+                              <motion.div
+                                layout // Framer Motion layout prop helps smoothen grid/list changes
+                                className={`
+                                  ${isCarousel ? 'flex gap-6' : ''}
+                                  ${widgetSettings.layout === 'grid' ? 'grid md:grid-cols-2 lg:grid-cols-3 gap-6' : ''}
+                                  ${widgetSettings.layout === 'masonry' ? 'columns-1 md:columns-2 lg:columns-3 gap-6 space-y-6' : ''}
+                                  ${widgetSettings.layout === 'list' ? 'max-w-2xl mx-auto flex flex-col gap-4' : ''}
+                                `}
+                                style={isCarousel ? { transform: `translateX(-${carouselIndex * (CARD_WIDTH + GAP)}px)`, transition: 'transform 0.5s cubic-bezier(0.25, 1, 0.5, 1)' } : {}}
+                              >
+                                 <AnimatePresence mode='wait'>
+                                    {(isCarousel ? likedTestimonials : likedTestimonials).map((testimonial, i) => (
+                                       <motion.div
+                                         key={`${testimonial.id}-${replayTrigger}`} // Key change forces re-animation
+                                         custom={i}
+                                         initial="hidden"
+                                         animate="visible"
+                                         variants={getAnimationVariants()}
+                                         className={getPreviewCardStyles()}
+                                       >
+                                          {/* Testimonial Content */}
+                                          <div className="flex items-center gap-1 mb-3">
+                                             {[...Array(testimonial.rating || 5)].map((_, idx) => (
+                                                <Star key={idx} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                                             ))}
+                                          </div>
+
+                                          {testimonial.type === 'video' && testimonial.video_url ? (
+                                             <StylishVideoPlayer videoUrl={testimonial.video_url} corners={widgetSettings.corners === 'sharp' ? 'rounded-none' : 'rounded-xl'} />
+                                          ) : (
+                                             <p className="text-sm leading-relaxed opacity-90 mb-4 line-clamp-6">{testimonial.content}</p>
+                                          )}
+
+                                          <div className="flex items-center gap-3 pt-4 border-t border-dashed border-gray-200/10 mt-auto">
+                                             <Avatar className="w-8 h-8 border border-white/20">
+                                                <AvatarImage src={testimonial.respondent_photo_url} />
+                                                <AvatarFallback className="bg-violet-100 text-violet-700 text-xs">{testimonial.respondent_name?.charAt(0)}</AvatarFallback>
+                                             </Avatar>
+                                             <div>
+                                                <div className="text-xs font-bold">{testimonial.respondent_name}</div>
+                                                <div className="text-[10px] opacity-70">{testimonial.respondent_role || 'Verified User'}</div>
+                                             </div>
+                                          </div>
+                                       </motion.div>
+                                    ))}
+                                 </AnimatePresence>
+                              </motion.div>
+                           </div>
+                         </>
+                       )}
+                    </CardContent>
+                 </Card>
+              </div>
+
             </div>
           </TabsContent>
 
@@ -799,9 +992,8 @@ const SpaceOverview = () => {
 
       {/* Video Modal */}
       <Dialog open={!!selectedVideo} onOpenChange={() => setSelectedVideo(null)}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader><DialogTitle>Video Testimonial</DialogTitle></DialogHeader>
-          <div className="aspect-video bg-black rounded-lg overflow-hidden">
+        <DialogContent className="max-w-3xl p-0 overflow-hidden bg-black border-none">
+          <div className="aspect-video w-full">
             {selectedVideo && <video src={selectedVideo} controls autoPlay className="w-full h-full" />}
           </div>
         </DialogContent>
