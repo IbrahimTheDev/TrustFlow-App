@@ -26,8 +26,8 @@ const SubmitTestimonial = () => {
   // Respondent Details
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState(''); // New State for Role
-  const [avatarFile, setAvatarFile] = useState(null); // New State for Avatar
+  const [role, setRole] = useState(''); 
+  const [avatarFile, setAvatarFile] = useState(null); 
   const [avatarPreview, setAvatarPreview] = useState(null);
 
   const [submitting, setSubmitting] = useState(false);
@@ -224,19 +224,19 @@ const SubmitTestimonial = () => {
         setUploadProgress(Math.min(progress, 90));
       };
 
-      // 1. Upload Avatar if exists
+      // 1. Upload Avatar if exists (Updated Bucket Name)
       if (avatarFile) {
         const fileExt = avatarFile.name.split('.').pop();
         const avatarFileName = `${space.id}/avatars/${uuidv4()}.${fileExt}`;
         
         const { error: avatarError } = await supabase.storage
-          .from('avatars') // Ensure this bucket exists in Supabase
+          .from('respondent_photo') // <--- UPDATED HERE
           .upload(avatarFileName, avatarFile);
 
         if (avatarError) throw avatarError;
 
         const { data: { publicUrl } } = supabase.storage
-          .from('avatars')
+          .from('respondent_photo') // <--- UPDATED HERE
           .getPublicUrl(avatarFileName);
         
         avatarUrl = publicUrl;
@@ -279,8 +279,8 @@ const SubmitTestimonial = () => {
           rating: space.collect_star_rating ? rating : null,
           respondent_name: name,
           respondent_email: email,
-          respondent_role: role, // Insert Role
-          respondent_photo_url: avatarUrl, // Insert Avatar URL
+          respondent_role: role, 
+          respondent_photo_url: avatarUrl, 
           is_liked: false,
           created_at: new Date().toISOString(),
         });
