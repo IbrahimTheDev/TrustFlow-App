@@ -48,6 +48,12 @@ const SpaceOverview = () => {
     showHeading: false, headingText: 'Wall of Love', headingFont: 'Inter', headingColor: '#000000', headingBold: true,
     showSubheading: false, subheadingText: 'What our happy customers say', subheadingFont: 'Inter', subheadingColor: '#64748b',
     carouselFocusZoom: false, carouselSameSize: true, 
+    popupsEnabled: false,
+    popupPosition: 'bottom-left', // or 'bottom-right'
+    popupDelay: 2,     // seconds initial delay
+    popupDuration: 5,  // seconds display time
+    popupGap: 10,      // seconds between popups
+    popupMessage: 'Someone just shared love!',
   };
 
   // --- STATE ---

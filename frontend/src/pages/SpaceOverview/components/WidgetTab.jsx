@@ -13,7 +13,7 @@ import {
   Palette, Type, MessageSquare, Quote, Hand, Square, Circle, AlignLeft,
   Check, X, Sparkles, RefreshCw, Gauge, ChevronLeft, ChevronRight, Star, BadgeCheck,
   Smartphone, Tablet, Laptop, Save, RotateCcw, Shuffle, Heading,
-  Maximize2, Minimize2, Layers, Info, Loader2, AlertCircle, ChevronDown, CheckCircle, AlertTriangle
+  Maximize2, Minimize2, Layers, Info, Loader2, AlertCircle, ChevronDown, CheckCircle, AlertTriangle, Bell, Clock, MapPin
 } from 'lucide-react';
 import { StylishVideoPlayer, PremiumToggle, SectionHeader, CARD_WIDTH, GAP, PADDING_X } from './SharedComponents';
 import confetti from 'canvas-confetti';
@@ -51,6 +51,8 @@ const WidgetTab = ({
   // -- State --
   const [showMobileWarning, setShowMobileWarning] = useState(false);
   const [showScrollWarning, setShowScrollWarning] = useState(true);
+  const [showPopupPreview, setShowPopupPreview] = useState(false);
+  const [previewPopupIndex, setPreviewPopupIndex] = useState(0);
   
   // -- Save & Feedback State --
   const [saveStatus, setSaveStatus] = useState('idle'); 
@@ -113,10 +115,29 @@ const WidgetTab = ({
 
   // -- Data Processing --
   const displayedTestimonials = useMemo(() => {
+    
     let result = [...testimonials].filter(t => t.is_liked);
     if (widgetSettings?.shuffle) result = result.sort(() => Math.random() - 0.5);
     return result.slice(0, widgetSettings?.maxCount || 12);
   }, [testimonials, widgetSettings?.shuffle, widgetSettings?.maxCount]);
+
+    // -- Popup Checks --
+    useEffect(() => {
+      if (!widgetSettings?.popupsEnabled) {
+          setShowPopupPreview(false);
+          return;
+      }
+      const loop = setInterval(() => {
+          setShowPopupPreview(prevIsVisible => {
+              if (!prevIsVisible) {
+                  setPreviewPopupIndex(prevIndex => (prevIndex + 1) % displayedTestimonials.length);
+              }
+              return !prevIsVisible;
+          });
+      }, 4000); 
+  
+      return () => clearInterval(loop);
+    }, [widgetSettings?.popupsEnabled, displayedTestimonials.length]);
 
   // -- Seamless Loop --
   const carouselItems = useMemo(() => {
@@ -337,6 +358,59 @@ const WidgetTab = ({
     idle: { x: 0 },
     error: { x: [0, -5, 5, -5, 5, 0], transition: { duration: 0.4 } }
   };
+  
+  // --- NEW: Popup Preview Component (Floating Card) ---
+  // --- NEW: Popup Preview Component (Floating Card) ---
+  const PopupPreviewCard = () => {
+    const positionClass = widgetSettings?.popupPosition === 'bottom-left' ? 'bottom-4 left-4' : 'bottom-4 right-4';
+    
+    // UPDATED: Use dynamic index instead of always [0]
+    // Agar koi testimonial nahi hai, to fallback dummy data dikhao
+    const item = displayedTestimonials[previewPopupIndex] || displayedTestimonials[0] || { 
+        respondent_name: "Sarah J.", 
+        content: "Love this product! It saved me so much time.", 
+        rating: 5,
+        respondent_photo_url: null 
+    };
+    
+    return (
+        <motion.div
+            // ... (baaki animations same rahenge)
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            className={`absolute z-50 max-w-[280px] w-full p-4 rounded-2xl shadow-2xl backdrop-blur-md border border-white/20 flex gap-3 items-start
+                ${widgetSettings.cardTheme === 'dark' ? 'bg-slate-900/90 text-white' : 'bg-white/90 text-slate-900'}
+                ${positionClass}
+            `}
+        >
+            {/* ... (Andar ka UI code same rahega) ... */}
+            <div className="relative">
+                <Avatar className="w-10 h-10 border-2 border-white shadow-sm">
+                    <AvatarImage src={item.respondent_photo_url} />
+                    <AvatarFallback className="bg-gradient-to-br from-violet-500 to-indigo-500 text-white text-xs">
+                        {item.respondent_name?.charAt(0)}
+                    </AvatarFallback>
+                </Avatar>
+                {/* ... */}
+            </div>
+            <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-0.5">
+                    <span className="font-bold text-sm truncate">{item.respondent_name}</span>
+                    <div className="flex text-amber-400">
+                        {[...Array(item.rating || 5)].map((_, i) => <Star key={i} className="w-2 h-2 fill-current" />)}
+                    </div>
+                </div>
+                <p className="text-xs opacity-90 line-clamp-2 leading-tight">{item.content}</p>
+                <div className="flex items-center gap-1 mt-1.5 opacity-60">
+                    <p className="text-[9px] font-medium">{widgetSettings.popupMessage || 'Verified Customer'}</p>
+                    <span className="text-[8px]">•</span>
+                    <p className="text-[9px]">Just now</p>
+                </div>
+            </div>
+        </motion.div>
+    );
+  };
 
   if (!widgetSettings) return null; // Safe guard
 
@@ -402,7 +476,11 @@ const WidgetTab = ({
                 `}
             >
                 {deviceMode === 'mobile' && <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-slate-900 rounded-b-xl z-50" />}
-
+                <AnimatePresence>
+                 {widgetSettings.popupsEnabled && showPopupPreview && (
+                   <PopupPreviewCard />
+                            )}
+                </AnimatePresence>
                 <CardContent 
                 ref={containerRef}
                 className={`h-full w-full overflow-y-auto custom-scrollbar relative
@@ -620,7 +698,99 @@ const WidgetTab = ({
         </CardHeader>
         
         <CardContent className="flex-1 overflow-y-auto p-6 space-y-10 scrollbar-thin scrollbar-thumb-violet-200 scrollbar-track-transparent">
-          
+          {/* --- NEW: FOMO POPUPS SECTION (PREMIUM) --- */}
+          <div className="space-y-4">
+             <div className="flex items-center justify-between mb-2">
+                <SectionHeader icon={Bell} title="Social Proof Popups" />
+                <Badge className="text-[10px] bg-gradient-to-r from-violet-600 to-indigo-600 text-white border-0 shadow-sm flex items-center gap-1 px-2 py-0.5">
+                   <Star className="w-2.5 h-2.5 fill-current" /> PRO
+                </Badge>
+             </div>
+             
+             <div className={`p-4 rounded-xl border transition-all duration-300 ${widgetSettings.popupsEnabled ? 'bg-violet-50 border-violet-200' : 'bg-slate-50 border-slate-100'}`}>
+                 <div className="flex items-center justify-between mb-4">
+                     <div className="space-y-0.5">
+                         <Label className="text-sm font-semibold text-slate-800">Enable Popups</Label>
+                         <p className="text-[10px] text-slate-500">Show recent reviews in corner</p>
+                     </div>
+                     <ToggleSwitch 
+                        isOn={widgetSettings.popupsEnabled} 
+                        onToggle={() => setWidgetSettings({...widgetSettings, popupsEnabled: !widgetSettings.popupsEnabled})}
+                     />
+                 </div>
+
+                 {/* Collapsible Settings */}
+                 <AnimatePresence>
+                    {widgetSettings.popupsEnabled && (
+                        <motion.div 
+                            initial={{ height: 0, opacity: 0 }} 
+                            animate={{ height: 'auto', opacity: 1 }} 
+                            exit={{ height: 0, opacity: 0 }}
+                            className="overflow-hidden space-y-4 pt-2 border-t border-violet-200/50"
+                        >
+                            <div>
+                                <Label className="text-xs text-slate-500 mb-2 block">Position</Label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button 
+                                        onClick={() => setWidgetSettings({...widgetSettings, popupPosition: 'bottom-left'})}
+                                        className={`flex flex-col items-center justify-center p-2 rounded-lg border text-xs transition-all gap-1 ${widgetSettings.popupPosition === 'bottom-left' ? 'bg-white border-violet-500 text-violet-700 shadow-sm' : 'bg-transparent border-slate-200 text-slate-500 hover:bg-white'}`}
+                                    >
+                                        <div className="w-8 h-6 bg-slate-100 rounded border border-slate-200 relative">
+                                            <div className="absolute bottom-1 left-1 w-2 h-2 bg-violet-500 rounded-sm" />
+                                        </div>
+                                        Bottom Left
+                                    </button>
+                                    <button 
+                                        onClick={() => setWidgetSettings({...widgetSettings, popupPosition: 'bottom-right'})}
+                                        className={`flex flex-col items-center justify-center p-2 rounded-lg border text-xs transition-all gap-1 ${widgetSettings.popupPosition === 'bottom-right' ? 'bg-white border-violet-500 text-violet-700 shadow-sm' : 'bg-transparent border-slate-200 text-slate-500 hover:bg-white'}`}
+                                    >
+                                        <div className="w-8 h-6 bg-slate-100 rounded border border-slate-200 relative">
+                                            <div className="absolute bottom-1 right-1 w-2 h-2 bg-violet-500 rounded-sm" />
+                                        </div>
+                                        Bottom Right
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <Label className="text-xs text-slate-500 mb-2 block">Display Message</Label>
+                                <Input 
+                                    value={widgetSettings.popupMessage} 
+                                    onChange={(e) => setWidgetSettings({...widgetSettings, popupMessage: e.target.value})}
+                                    className="h-8 text-xs bg-white"
+                                    placeholder="Someone just shared love!"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <div className="flex justify-between mb-1">
+                                        <Label className="text-[10px] text-slate-500 flex items-center gap-1"><Clock className="w-3 h-3" /> Duration</Label>
+                                        <span className="text-[10px] font-mono text-violet-600">{widgetSettings.popupDuration}s</span>
+                                    </div>
+                                    <Slider 
+                                        value={[widgetSettings.popupDuration]} min={3} max={15} step={1}
+                                        onValueChange={(val) => setWidgetSettings({...widgetSettings, popupDuration: val[0]})}
+                                    />
+                                </div>
+                                <div>
+                                    <div className="flex justify-between mb-1">
+                                        <Label className="text-[10px] text-slate-500 flex items-center gap-1"><RefreshCw className="w-3 h-3" /> Gap</Label>
+                                        <span className="text-[10px] font-mono text-violet-600">{widgetSettings.popupGap}s</span>
+                                    </div>
+                                    <Slider 
+                                        value={[widgetSettings.popupGap]} min={5} max={60} step={5}
+                                        onValueChange={(val) => setWidgetSettings({...widgetSettings, popupGap: val[0]})}
+                                    />
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+                 </AnimatePresence>
+             </div>
+          </div>
+
+          <Separator className="bg-slate-100" />
           {/* 1. Layout Structure */}
           <div className="space-y-4">
             <SectionHeader icon={Layout} title="Layout Structure" />

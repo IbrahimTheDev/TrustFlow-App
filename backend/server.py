@@ -6,7 +6,7 @@ import os
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field
-from typing import List, Optional, dict
+from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timezone
 
@@ -14,13 +14,14 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 # Supabase connection
-supabase_url = os.environ.get('SUPABASE_URL')
-supabase_key = os.environ.get('SUPABASE_SERVICE_ROLE_KEY')
+supabase_url = os.environ.get('REACT_APP_SUPABASE_URL')
+supabase_key = os.environ.get('REACT_APP_SUPABASE_ANON_KEY')
 
 if not supabase_url or not supabase_key:
-    raise ValueError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
+    raise ValueError("Missing REACT_APP_SUPABASE_URL or REACT_APP_SUPABASE_ANON_KEY")
 
 supabase: Client = create_client(supabase_url, supabase_key)
+
 
 # Create the main app
 app = FastAPI(title="TrustFlow API")
@@ -158,7 +159,40 @@ async def get_public_space(slug: str):
     except Exception as e:
         logger.error(f"Error fetching space: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch space")
+    
+# --- NEW: Combined Endpoint for Popups & Embed ---
+@api_router.get("/spaces/{space_id}/public-data")
+async def get_space_public_data(space_id: str):
+    try:
+        # 1. Testimonials (Recent First)
+        testimonials_res = supabase.table('testimonials') \
+            .select('id, is_liked, type, content, video_url, rating, respondent_name, respondent_photo_url, respondent_role, attached_photos, created_at') \
+            .eq('space_id', space_id) \
+            .eq('is_liked', True) \
+            .order('created_at', desc=True) \
+            .execute()
+        
+        testimonials = testimonials_res.data if testimonials_res.data else []
 
+        # 2. Settings
+        settings_res = supabase.table('widget_configurations') \
+            .select('settings') \
+            .eq('space_id', space_id) \
+            .execute()
+        
+        widget_settings = {}
+        if settings_res.data and len(settings_res.data) > 0:
+            widget_settings = settings_res.data[0]['settings']
+
+        return {
+            "status": "success",
+            "testimonials": testimonials,
+            "widget_settings": widget_settings
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching public data for {space_id}: {e}")
+        return {"status": "error", "testimonials": [], "widget_settings": {}}
 
 @api_router.get("/setup-db")
 async def setup_database():
@@ -188,7 +222,7 @@ app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=["*"],  # <--- Change this to "*" for testing
     allow_methods=["*"],
     allow_headers=["*"],
 )
