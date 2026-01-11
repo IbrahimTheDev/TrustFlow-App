@@ -341,7 +341,8 @@ const WidgetTab = ({
   if (!widgetSettings) return null; // Safe guard
 
   return (
-    <div className="flex flex-col xl:flex-row gap-6 h-[calc(100vh-200px)] min-h-[800px] relative">
+    // UPDATED: Main Container with Mobile-First Order Logic and Responsive Heights
+    <div className="flex flex-col xl:flex-row gap-6 xl:h-[calc(100vh-200px)] xl:min-h-[800px] relative">
       {/* Mobile Suggestion */}
       {showMobileWarning && (
           <div className="absolute top-0 left-0 right-0 z-50 bg-violet-600 text-white p-2 text-xs flex justify-between items-center shadow-lg">
@@ -349,9 +350,208 @@ const WidgetTab = ({
               <button onClick={() => setShowMobileWarning(false)}><X className="w-4 h-4" /></button>
           </div>
       )}
+      
+      {/* Right Column (Now TOP on Mobile via order-1): Live Canvas */}
+      <div className="flex-1 flex flex-col min-w-0 order-1 xl:order-2 h-[650px] xl:h-auto">
+         <div className="flex items-center justify-between mb-4 px-2">
+            <div className="flex items-center gap-4">
+               <div className="flex items-center gap-2">
+                   <Badge variant="outline" className="bg-white/50 backdrop-blur border-violet-200 text-violet-700 animate-pulse">
+                      Live Preview
+                   </Badge>
+                   <span className="text-xs text-muted-foreground hidden md:inline">{displayedTestimonials.length} active</span>
+               </div>
+               
+               <div className="flex items-center bg-slate-100 rounded-lg p-1 border">
+                   {[
+                       { mode: 'desktop', icon: Laptop },
+                       { mode: 'tablet', icon: Tablet },
+                       { mode: 'mobile', icon: Smartphone }
+                   ].map(dev => (
+                       <button
+                           key={dev.mode}
+                           onClick={() => setDeviceMode(dev.mode)}
+                           className={`p-1.5 rounded-md transition-all ${deviceMode === dev.mode ? 'bg-white shadow text-violet-600' : 'text-slate-400 hover:text-slate-600'}`}
+                       >
+                           <dev.icon className="w-4 h-4" />
+                       </button>
+                   ))}
+               </div>
+            </div>
 
-      {/* Left Column: Control Deck */}
-      <Card className="w-full xl:w-[420px] flex flex-col border-violet-100 dark:border-violet-900/20 shadow-xl shadow-violet-500/5 bg-white/80 backdrop-blur-sm overflow-hidden flex-shrink-0">
+            <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" onClick={handleReset} className="text-slate-400 hover:text-red-500 h-8 text-xs">
+                    <RotateCcw className="w-3.5 h-3.5 mr-1.5" /> Reset
+                </Button>
+            </div>
+         </div>
+
+         <Card className="flex-1 border-2 border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/50 overflow-hidden relative shadow-inner flex items-center justify-center p-4">
+            
+            <motion.div 
+                layout
+                initial={false}
+                animate={{
+                    width: deviceMode === 'mobile' ? '375px' : deviceMode === 'tablet' ? '768px' : '100%',
+                    height: '100%',
+                }}
+                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                className={`relative bg-white shadow-2xl transition-all duration-500 overflow-hidden flex flex-col
+                    ${deviceMode === 'mobile' ? 'rounded-[30px] border-[8px] border-slate-900' : ''}
+                    ${deviceMode === 'tablet' ? 'rounded-[20px] border-[8px] border-slate-900' : 'rounded-lg border border-slate-200'}
+                `}
+            >
+                {deviceMode === 'mobile' && <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-slate-900 rounded-b-xl z-50" />}
+
+                <CardContent 
+                ref={containerRef}
+                className={`h-full w-full overflow-y-auto custom-scrollbar relative
+                    ${widgetSettings.theme === 'dark' ? 'bg-slate-950' : widgetSettings.theme === 'transparent' ? 'bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px]' : 'bg-slate-50'}
+                    ${widgetSettings.wallPadding === 'small' ? 'p-4' : widgetSettings.wallPadding === 'large' ? 'p-12' : 'p-8'}
+                `}
+                >
+                <div className="min-h-full flex flex-col justify-center">
+
+                    {/* Headings */}
+                    {(widgetSettings.showHeading || widgetSettings.showSubheading) && (
+                        <div className="text-center mb-8 space-y-2">
+                            {widgetSettings.showHeading && (
+                                <h2 
+                                    style={{
+                                        fontFamily: previewFont, 
+                                        color: widgetSettings.headingColor,
+                                        fontWeight: widgetSettings.headingBold ? 'bold' : 'normal'
+                                    }}
+                                    className="text-2xl md:text-3xl transition-all duration-200"
+                                >
+                                    {widgetSettings.headingText}
+                                </h2>
+                            )}
+                            {widgetSettings.showSubheading && (
+                                <p 
+                                    style={{
+                                        fontFamily: previewFont, 
+                                        color: widgetSettings.subheadingColor
+                                    }}
+                                    className="text-sm md:text-lg transition-all duration-200"
+                                >
+                                    {widgetSettings.subheadingText}
+                                </p>
+                            )}
+                        </div>
+                    )}
+
+                    {displayedTestimonials.length === 0 ? (
+                        <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                        <Star className="w-16 h-16 opacity-20 mb-4" />
+                        <p>No testimonials available.</p>
+                        </div>
+                    ) : (
+                        <>
+                        {isCarousel && (
+                            <>
+                            <button onClick={handlePrev} className="absolute left-4 top-1/2 -translate-y-1/2 z-30 h-10 w-10 rounded-full bg-white/90 shadow-lg flex items-center justify-center hover:scale-110 transition-all"><ChevronLeft className="w-5 h-5 text-slate-700" /></button>
+                            <button onClick={handleNext} className="absolute right-4 top-1/2 -translate-y-1/2 z-30 h-10 w-10 rounded-full bg-white/90 shadow-lg flex items-center justify-center hover:scale-110 transition-all"><ChevronRight className="w-5 h-5 text-slate-700" /></button>
+                            </>
+                        )}
+
+                        <div 
+                            key={`${widgetSettings.layout}-${widgetSettings.cardSize}`} 
+                            className="relative mx-auto transition-all duration-300"
+                            style={isCarousel ? { width: maskWidth, overflow: 'hidden' } : { width: '100%', maxWidth: '1200px' }}
+                        >
+                            <motion.div
+                                layout 
+                                className={`
+                                ${isCarousel 
+                                    ? `flex gap-6 py-4 px-2 ${widgetSettings.carouselSameSize ? 'items-stretch' : 'items-center'}` 
+                                    : ''
+                                } 
+                                ${widgetSettings.layout === 'grid' ? 'grid md:grid-cols-2 lg:grid-cols-3 gap-6' : ''}
+                                ${widgetSettings.layout === 'masonry' ? 'columns-1 md:columns-2 lg:columns-3 gap-6 space-y-6' : ''}
+                                ${widgetSettings.layout === 'list' ? 'max-w-2xl mx-auto flex flex-col gap-4' : ''}
+                                `}
+                                style={isCarousel ? { 
+                                    transform: `translateX(-${carouselIndex * (getCardWidthPx() + GAP)}px)`, 
+                                    transition: isSnapping ? 'none' : 'transform 0.5s cubic-bezier(0.25, 1, 0.5, 1)' 
+                                } : {}}
+                            >
+                                <AnimatePresence mode='wait'>
+                                    {/* Use 'carouselItems' for infinite cloning, else standard list */}
+                                    {(isCarousel ? carouselItems : displayedTestimonials).map((testimonial, i) => {
+                                        let isFocused = false;
+                                        if (isCarousel && widgetSettings.carouselFocusZoom) {
+                                            const relativeIndex = i - carouselIndex;
+                                            const centerOffset = Math.floor(visibleCount / 2);
+                                            if (relativeIndex === centerOffset) isFocused = true;
+                                        }
+
+                                        return (
+                                            <motion.div
+                                                key={`${testimonial.id}-${i}-${replayTrigger}`}
+                                                custom={i}
+                                                initial="hidden"
+                                                animate={isFocused ? { scale: 1.05, opacity: 1, zIndex: 10 } : "visible"}
+                                                variants={getAnimationVariants()}
+                                                className={getPreviewCardStyles(i)}
+                                                style={{
+                                                    width: isCarousel ? `${getCardWidthPx()}px` : undefined,
+                                                    transformOrigin: 'center center'
+                                                }}
+                                            >
+                                                <div className="flex items-center gap-1 mb-3">
+                                                    {[...Array(testimonial.rating || 5)].map((_, idx) => (
+                                                        <Star key={idx} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                                                    ))}
+                                                </div>
+
+                                                <div className="flex-1 mb-4 flex flex-col">
+                                                    {testimonial.type === 'video' && testimonial.video_url ? (
+                                                    <StylishVideoPlayer videoUrl={testimonial.video_url} corners={widgetSettings.corners === 'sharp' ? 'rounded-none' : 'rounded-xl'} />
+                                                    ) : (
+                                                    <p className={`text-sm leading-relaxed line-clamp-6 whitespace-pre-line
+                                                        ${widgetSettings.testimonialStyle === 'bubble' 
+                                                            ? (widgetSettings.cardTheme === 'dark' ? 'p-4 bg-slate-800 text-slate-200 rounded-lg relative' : 'p-4 bg-slate-100 text-slate-800 rounded-lg relative') 
+                                                            : ''}
+                                                        ${widgetSettings.testimonialStyle === 'quote' 
+                                                            ? (widgetSettings.cardTheme === 'dark' ? 'pl-4 border-l-4 border-violet-400 italic text-slate-300' : 'pl-4 border-l-4 border-violet-400 italic text-slate-600') 
+                                                            : ''}
+                                                        ${widgetSettings.testimonialStyle === 'clean' ? 'opacity-90' : ''}
+                                                    `}>
+                                                        {testimonial.content}
+                                                    </p>
+                                                    )}
+                                                </div>
+
+                                                <div className="flex items-center gap-3 pt-4 border-t border-dashed border-gray-200/10 mt-auto">
+                                                    <Avatar className="w-12 h-12 border border-white/20 overflow-hidden shrink-0">
+                                                        <AvatarImage src={testimonial.respondent_photo_url} className="w-full h-full object-cover scale-110" />
+                                                        <AvatarFallback className="bg-violet-100 text-violet-700 text-xs">{testimonial.respondent_name?.charAt(0)}</AvatarFallback>
+                                                    </Avatar>
+                                                    <div>
+                                                        <div className={`font-bold ${getNameSizeClass()} flex items-center gap-1.5`}>
+                                                            {testimonial.respondent_name}
+                                                            <BadgeCheck className="w-4 h-4 text-white fill-blue-500 shrink-0" />
+                                                        </div>
+                                                        <div className="text-[10px] opacity-70">{testimonial.respondent_role || 'Verified User'}</div>
+                                                    </div>
+                                                </div>
+                                            </motion.div>
+                                        );
+                                    })}
+                                </AnimatePresence>
+                            </motion.div>
+                        </div>
+                        </>
+                    )}
+                </div>
+                </CardContent>
+            </motion.div>
+         </Card>
+      </div>
+
+      {/* Left Column (Now BOTTOM on Mobile via order-2): Control Deck */}
+      <Card className="w-full xl:w-[420px] flex flex-col border-violet-100 dark:border-violet-900/20 shadow-xl shadow-violet-500/5 bg-white/80 backdrop-blur-sm overflow-hidden flex-shrink-0 order-2 xl:order-1 h-[600px] xl:h-full">
         <CardHeader className="pb-4 border-b bg-white/50">
           <div className="flex items-center justify-between">
             <div>
@@ -863,205 +1063,6 @@ const WidgetTab = ({
 
         </CardContent>
       </Card>
-
-      {/* Right Column: Live Canvas */}
-      <div className="flex-1 flex flex-col min-w-0">
-         <div className="flex items-center justify-between mb-4 px-2">
-            <div className="flex items-center gap-4">
-               <div className="flex items-center gap-2">
-                   <Badge variant="outline" className="bg-white/50 backdrop-blur border-violet-200 text-violet-700 animate-pulse">
-                      Live Preview
-                   </Badge>
-                   <span className="text-xs text-muted-foreground hidden md:inline">{displayedTestimonials.length} active</span>
-               </div>
-               
-               <div className="flex items-center bg-slate-100 rounded-lg p-1 border">
-                   {[
-                       { mode: 'desktop', icon: Laptop },
-                       { mode: 'tablet', icon: Tablet },
-                       { mode: 'mobile', icon: Smartphone }
-                   ].map(dev => (
-                       <button
-                           key={dev.mode}
-                           onClick={() => setDeviceMode(dev.mode)}
-                           className={`p-1.5 rounded-md transition-all ${deviceMode === dev.mode ? 'bg-white shadow text-violet-600' : 'text-slate-400 hover:text-slate-600'}`}
-                       >
-                           <dev.icon className="w-4 h-4" />
-                       </button>
-                   ))}
-               </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm" onClick={handleReset} className="text-slate-400 hover:text-red-500 h-8 text-xs">
-                    <RotateCcw className="w-3.5 h-3.5 mr-1.5" /> Reset
-                </Button>
-            </div>
-         </div>
-
-         <Card className="flex-1 border-2 border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/50 overflow-hidden relative shadow-inner flex items-center justify-center p-4">
-            
-            <motion.div 
-                layout
-                initial={false}
-                animate={{
-                    width: deviceMode === 'mobile' ? '375px' : deviceMode === 'tablet' ? '768px' : '100%',
-                    height: '100%',
-                }}
-                transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                className={`relative bg-white shadow-2xl transition-all duration-500 overflow-hidden flex flex-col
-                    ${deviceMode === 'mobile' ? 'rounded-[30px] border-[8px] border-slate-900' : ''}
-                    ${deviceMode === 'tablet' ? 'rounded-[20px] border-[8px] border-slate-900' : 'rounded-lg border border-slate-200'}
-                `}
-            >
-                {deviceMode === 'mobile' && <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-slate-900 rounded-b-xl z-50" />}
-
-                <CardContent 
-                ref={containerRef}
-                className={`h-full w-full overflow-y-auto custom-scrollbar relative
-                    ${widgetSettings.theme === 'dark' ? 'bg-slate-950' : widgetSettings.theme === 'transparent' ? 'bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px]' : 'bg-slate-50'}
-                    ${widgetSettings.wallPadding === 'small' ? 'p-4' : widgetSettings.wallPadding === 'large' ? 'p-12' : 'p-8'}
-                `}
-                >
-                <div className="min-h-full flex flex-col justify-center">
-
-                    {/* Headings */}
-                    {(widgetSettings.showHeading || widgetSettings.showSubheading) && (
-                        <div className="text-center mb-8 space-y-2">
-                            {widgetSettings.showHeading && (
-                                <h2 
-                                    style={{
-                                        fontFamily: previewFont, 
-                                        color: widgetSettings.headingColor,
-                                        fontWeight: widgetSettings.headingBold ? 'bold' : 'normal'
-                                    }}
-                                    className="text-2xl md:text-3xl transition-all duration-200"
-                                >
-                                    {widgetSettings.headingText}
-                                </h2>
-                            )}
-                            {widgetSettings.showSubheading && (
-                                <p 
-                                    style={{
-                                        fontFamily: previewFont, 
-                                        color: widgetSettings.subheadingColor
-                                    }}
-                                    className="text-sm md:text-lg transition-all duration-200"
-                                >
-                                    {widgetSettings.subheadingText}
-                                </p>
-                            )}
-                        </div>
-                    )}
-
-                    {displayedTestimonials.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center text-slate-400">
-                        <Star className="w-16 h-16 opacity-20 mb-4" />
-                        <p>No testimonials available.</p>
-                        </div>
-                    ) : (
-                        <>
-                        {isCarousel && (
-                            <>
-                            <button onClick={handlePrev} className="absolute left-4 top-1/2 -translate-y-1/2 z-30 h-10 w-10 rounded-full bg-white/90 shadow-lg flex items-center justify-center hover:scale-110 transition-all"><ChevronLeft className="w-5 h-5 text-slate-700" /></button>
-                            <button onClick={handleNext} className="absolute right-4 top-1/2 -translate-y-1/2 z-30 h-10 w-10 rounded-full bg-white/90 shadow-lg flex items-center justify-center hover:scale-110 transition-all"><ChevronRight className="w-5 h-5 text-slate-700" /></button>
-                            </>
-                        )}
-
-                        <div 
-                            key={`${widgetSettings.layout}-${widgetSettings.cardSize}`} 
-                            className="relative mx-auto transition-all duration-300"
-                            style={isCarousel ? { width: maskWidth, overflow: 'hidden' } : { width: '100%', maxWidth: '1200px' }}
-                        >
-                            <motion.div
-                                layout 
-                                className={`
-                                ${isCarousel 
-                                    ? `flex gap-6 py-4 px-2 ${widgetSettings.carouselSameSize ? 'items-stretch' : 'items-center'}` 
-                                    : ''
-                                } 
-                                ${widgetSettings.layout === 'grid' ? 'grid md:grid-cols-2 lg:grid-cols-3 gap-6' : ''}
-                                ${widgetSettings.layout === 'masonry' ? 'columns-1 md:columns-2 lg:columns-3 gap-6 space-y-6' : ''}
-                                ${widgetSettings.layout === 'list' ? 'max-w-2xl mx-auto flex flex-col gap-4' : ''}
-                                `}
-                                style={isCarousel ? { 
-                                    transform: `translateX(-${carouselIndex * (getCardWidthPx() + GAP)}px)`, 
-                                    transition: isSnapping ? 'none' : 'transform 0.5s cubic-bezier(0.25, 1, 0.5, 1)' 
-                                } : {}}
-                            >
-                                <AnimatePresence mode='wait'>
-                                    {/* Use 'carouselItems' for infinite cloning, else standard list */}
-                                    {(isCarousel ? carouselItems : displayedTestimonials).map((testimonial, i) => {
-                                        let isFocused = false;
-                                        if (isCarousel && widgetSettings.carouselFocusZoom) {
-                                            const relativeIndex = i - carouselIndex;
-                                            const centerOffset = Math.floor(visibleCount / 2);
-                                            if (relativeIndex === centerOffset) isFocused = true;
-                                        }
-
-                                        return (
-                                            <motion.div
-                                                key={`${testimonial.id}-${i}-${replayTrigger}`}
-                                                custom={i}
-                                                initial="hidden"
-                                                animate={isFocused ? { scale: 1.05, opacity: 1, zIndex: 10 } : "visible"}
-                                                variants={getAnimationVariants()}
-                                                className={getPreviewCardStyles(i)}
-                                                style={{
-                                                    width: isCarousel ? `${getCardWidthPx()}px` : undefined,
-                                                    transformOrigin: 'center center'
-                                                }}
-                                            >
-                                                <div className="flex items-center gap-1 mb-3">
-                                                    {[...Array(testimonial.rating || 5)].map((_, idx) => (
-                                                        <Star key={idx} className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                                                    ))}
-                                                </div>
-
-                                                <div className="flex-1 mb-4 flex flex-col">
-                                                    {testimonial.type === 'video' && testimonial.video_url ? (
-                                                    <StylishVideoPlayer videoUrl={testimonial.video_url} corners={widgetSettings.corners === 'sharp' ? 'rounded-none' : 'rounded-xl'} />
-                                                    ) : (
-                                                    <p className={`text-sm leading-relaxed line-clamp-6 whitespace-pre-line
-                                                        ${widgetSettings.testimonialStyle === 'bubble' 
-                                                            ? (widgetSettings.cardTheme === 'dark' ? 'p-4 bg-slate-800 text-slate-200 rounded-lg relative' : 'p-4 bg-slate-100 text-slate-800 rounded-lg relative') 
-                                                            : ''}
-                                                        ${widgetSettings.testimonialStyle === 'quote' 
-                                                            ? (widgetSettings.cardTheme === 'dark' ? 'pl-4 border-l-4 border-violet-400 italic text-slate-300' : 'pl-4 border-l-4 border-violet-400 italic text-slate-600') 
-                                                            : ''}
-                                                        ${widgetSettings.testimonialStyle === 'clean' ? 'opacity-90' : ''}
-                                                    `}>
-                                                        {testimonial.content}
-                                                    </p>
-                                                    )}
-                                                </div>
-
-                                                <div className="flex items-center gap-3 pt-4 border-t border-dashed border-gray-200/10 mt-auto">
-                                                    <Avatar className="w-12 h-12 border border-white/20 overflow-hidden shrink-0">
-                                                        <AvatarImage src={testimonial.respondent_photo_url} className="w-full h-full object-cover scale-110" />
-                                                        <AvatarFallback className="bg-violet-100 text-violet-700 text-xs">{testimonial.respondent_name?.charAt(0)}</AvatarFallback>
-                                                    </Avatar>
-                                                    <div>
-                                                        <div className={`font-bold ${getNameSizeClass()} flex items-center gap-1.5`}>
-                                                            {testimonial.respondent_name}
-                                                            <BadgeCheck className="w-4 h-4 text-white fill-blue-500 shrink-0" />
-                                                        </div>
-                                                        <div className="text-[10px] opacity-70">{testimonial.respondent_role || 'Verified User'}</div>
-                                                    </div>
-                                                </div>
-                                            </motion.div>
-                                        );
-                                    })}
-                                </AnimatePresence>
-                            </motion.div>
-                        </div>
-                        </>
-                    )}
-                </div>
-                </CardContent>
-            </motion.div>
-         </Card>
-      </div>
     </div>
   );
 };

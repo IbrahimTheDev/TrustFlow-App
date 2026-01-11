@@ -244,28 +244,28 @@ const EditFormTab = ({
     // UPDATED: Main Container with Mobile-First Order Logic and Responsive Heights
     <div className="flex flex-col xl:flex-row gap-6 xl:h-[calc(100vh-200px)] xl:min-h-[800px]">
       
-      {/* RIGHT (Now TOP on Mobile via order-1): Live Interactive Preview 
-         Updated classes: order-1 xl:order-2, fixed height on mobile for visibility
-      */}
+      {/* RIGHT (Now TOP on Mobile via order-1): Live Interactive Preview */}
       <div className="flex-1 flex flex-col min-w-0 bg-slate-100 dark:bg-slate-900 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-inner relative order-1 xl:order-2 h-[650px] xl:h-auto">
         
-        {/* Device Toggle Bar */}
-        <div className="h-14 border-b bg-white dark:bg-slate-950 flex items-center justify-between px-6 z-20 shadow-sm shrink-0">
-           <div className="flex items-center gap-2">
-              <Badge variant="outline" className="animate-pulse border-violet-200 text-violet-700 bg-violet-50">Live Preview</Badge>
+        {/* Device Toggle Bar - UPDATED: Now visible on all screen sizes */}
+        <div className="h-14 border-b bg-white dark:bg-slate-950 flex items-center justify-between px-4 sm:px-6 z-20 shadow-sm shrink-0">
+           <div className="flex items-center gap-2 shrink-0">
+              <Badge variant="outline" className="animate-pulse border-violet-200 text-violet-700 bg-violet-50 hidden sm:flex">Live Preview</Badge>
+              {/* Show Icon only on very small screens if badge is hidden */}
+              <Monitor className="w-4 h-4 text-violet-600 sm:hidden" />
            </div>
-           <div className="hidden sm:flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+           
+           {/* DEVICE TOGGLES: Removed 'hidden sm:flex' so it shows on mobile too */}
+           <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-lg shrink-0">
               {[ { id: 'mobile', icon: Smartphone }, { id: 'tablet', icon: Tablet }, { id: 'desktop', icon: Monitor } ].map((device) => (
                 <button key={device.id} onClick={() => updateThemeConfig({ viewMode: device.id })} className={`p-2 rounded-md transition-all ${themeConfig.viewMode === device.id ? 'bg-white dark:bg-slate-700 shadow-sm text-violet-600' : 'text-slate-400 hover:text-slate-600'}`}>
                   <device.icon className="w-4 h-4" />
                 </button>
               ))}
            </div>
-           {/* Mobile Only: Show simplified device indicator if needed, or hide on very small screens */}
-           <div className="sm:hidden text-xs text-muted-foreground">Preview</div>
 
            {/* Global Reset Button */}
-           <Button variant="ghost" size="sm" onClick={handleReset} className="text-xs text-muted-foreground hover:text-red-500">
+           <Button variant="ghost" size="sm" onClick={handleReset} className="text-xs text-muted-foreground hover:text-red-500 shrink-0">
              <RotateCcw className="w-3 h-3 mr-1.5" /> Reset
            </Button>
         </div>
@@ -536,9 +536,7 @@ const EditFormTab = ({
         </div> 
       </div>
 
-      {/* LEFT (Now BOTTOM on Mobile via order-2): Designer Controls 
-         Updated classes: order-2 xl:order-1, fixed height on mobile for scrollability
-      */}
+      {/* LEFT (Now BOTTOM on Mobile via order-2): Designer Controls */}
       <Card className="w-full xl:w-[400px] flex flex-col border-violet-100 dark:border-violet-900/20 shadow-xl shadow-violet-500/5 bg-white/80 backdrop-blur-sm overflow-hidden flex-shrink-0 order-2 xl:order-1 h-[600px] xl:h-full">
         <CardHeader className="pb-4 border-b">
           <CardTitle className="flex items-center gap-2 text-lg">
