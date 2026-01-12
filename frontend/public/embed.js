@@ -42,7 +42,7 @@
             .tf-popup-card.tf-dark p { color: #cbd5e1 !important; }
             .tf-popup-card.tf-active { opacity: 1 !important; transform: translateY(0) scale(1) !important; }
             @media (max-width: 768px) {
-                .tf-popup-wrapper { max-width: 100% !important; bottom: 15px !important; }
+                .tf-popup-wrapper { max-width: 64% !important; bottom: 15px !important; }
                 .tf-popup-card { width: auto !important; }
             }
         `;
