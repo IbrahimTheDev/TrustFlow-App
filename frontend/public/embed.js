@@ -176,8 +176,9 @@
     }
 
     function fetchAndInitPopups(spaceId, baseUrl, settings) {
-        var cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+        var cleanBase = 'https://trust-flow-app.vercel.app';                // IMPORTANT: Hardcoded for stability (Have to Change Later if domain changed)
         var apiUrl = cleanBase + '/api/spaces/' + spaceId + '/public-data'; 
+        console.log("TF: Initializing Popups from " + apiUrl);
         
         var fetchData = function(isFirstLoad) {
             fetch(apiUrl)
