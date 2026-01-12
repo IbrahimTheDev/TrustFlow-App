@@ -1,55 +1,83 @@
 (function() {
     "use strict";
 
-    // --- 1. CONFIGURATION & STATE ---
+    // --- 1. STATE MANAGEMENT ---
     var config = null; 
     var isWidgetRendered = false; 
 
-    // --- 2. CSS STYLES (Styles wahi purane hain) ---
-    var styleId = 'tf-embed-css';
-    if (!document.getElementById(styleId)) {
-        var style = document.createElement('style');
-        style.id = styleId;
-        style.innerHTML = `
-            .trustflow-widget-container { width: 100%; position: relative; z-index: 1; min-height: 150px; display: block; }
-            .trustflow-widget-iframe { width: 100%; border: none; display: block; background: transparent !important; }
-            .tf-popup-wrapper { 
-                position: fixed !important; z-index: 2147483647 !important; 
-                max-width: 320px !important; width: auto !important;
-                font-family: 'Inter', sans-serif !important; pointer-events: none !important;
-                display: flex !important; flex-direction: column !important; gap: 10px !important;
-                transition: all 0.5s ease !important;
-            }
-            .tf-popup-bottom-left { bottom: 20px !important; left: 20px !important; }
-            .tf-popup-bottom-right { bottom: 20px !important; right: 20px !important; }
-            .tf-popup-card {
-                background: rgba(255, 255, 255, 0.95) !important;
-                backdrop-filter: blur(10px) !important; -webkit-backdrop-filter: blur(10px) !important;
-                border: 1px solid rgba(255, 255, 255, 0.5) !important;
-                box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.15) !important;
-                border-radius: 16px !important; padding: 12px 16px !important;
-                display: flex !important; align-items: center !important; gap: 12px !important;
-                pointer-events: auto !important; cursor: default !important;
-                opacity: 0 !important; transform: translateY(20px) scale(0.95) !important;
-                transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1) !important;
-                color: #1e293b !important;
-            }
-            .tf-popup-card.tf-dark {
-                background: rgba(15, 23, 42, 0.95) !important; border: 1px solid rgba(255, 255, 255, 0.1) !important;
-                color: #f8fafc !important;
-            }
-            .tf-popup-card.tf-dark strong { color: #f8fafc !important; }
-            .tf-popup-card.tf-dark p { color: #cbd5e1 !important; }
-            .tf-popup-card.tf-active { opacity: 1 !important; transform: translateY(0) scale(1) !important; }
-            @media (max-width: 768px) {
-                .tf-popup-wrapper { max-width: 64% !important; bottom: 15px !important; }
-                .tf-popup-card { width: auto !important; }
-            }
-        `;
-        document.head.appendChild(style);
+    // --- 2. SAFE EXECUTION ENGINE (FIX FOR NEXT.JS/REACT HYDRATION) ---
+    // Ye function decide karega ki kab start karna hai
+    function autoStart() {
+        // Agar already start ho chuka hai to ruk jao
+        if (window.TF_LOADED) return;
+        
+        // Check: Kya page poori tarah load ho gaya hai?
+        if (document.readyState === 'complete' || document.readyState === 'interactive') {
+            // Haan: To turant chalu karo (Next.js/React Hydrated)
+            setTimeout(initEngine, 0);
+        } else {
+            // Nahi: To 'load' event ka wait karo (Standard HTML/Loading phase)
+            window.addEventListener('load', initEngine);
+        }
     }
 
-    // --- 3. AUTO-DETECT CONFIGURATION (No Hardcoding) ---
+    // Ye main function hai jo sab kuch start karega
+    function initEngine() {
+        if (window.TF_LOADED) return;
+        window.TF_LOADED = true;
+
+        injectStyles(); // CSS ab yahan inject hogi (Safe time par)
+        initTrustFlow(); // Main Logic
+        setInterval(initTrustFlow, 1000); // React Navigation Watcher
+    }
+
+    // --- 3. CSS STYLES (Moved inside function for safety) ---
+    function injectStyles() {
+        var styleId = 'tf-embed-css';
+        if (!document.getElementById(styleId)) {
+            var style = document.createElement('style');
+            style.id = styleId;
+            style.innerHTML = `
+                .trustflow-widget-container { width: 100%; position: relative; z-index: 1; min-height: 150px; display: block; }
+                .trustflow-widget-iframe { width: 100%; border: none; display: block; background: transparent !important; }
+                .tf-popup-wrapper { 
+                    position: fixed !important; z-index: 2147483647 !important; 
+                    max-width: 320px !important; width: auto !important;
+                    font-family: 'Inter', sans-serif !important; pointer-events: none !important;
+                    display: flex !important; flex-direction: column !important; gap: 10px !important;
+                    transition: all 0.5s ease !important;
+                }
+                .tf-popup-bottom-left { bottom: 20px !important; left: 20px !important; }
+                .tf-popup-bottom-right { bottom: 20px !important; right: 20px !important; }
+                .tf-popup-card {
+                    background: rgba(255, 255, 255, 0.95) !important;
+                    backdrop-filter: blur(10px) !important; -webkit-backdrop-filter: blur(10px) !important;
+                    border: 1px solid rgba(255, 255, 255, 0.5) !important;
+                    box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.15) !important;
+                    border-radius: 16px !important; padding: 12px 16px !important;
+                    display: flex !important; align-items: center !important; gap: 12px !important;
+                    pointer-events: auto !important; cursor: default !important;
+                    opacity: 0 !important; transform: translateY(20px) scale(0.95) !important;
+                    transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1) !important;
+                    color: #1e293b !important;
+                }
+                .tf-popup-card.tf-dark {
+                    background: rgba(15, 23, 42, 0.95) !important; border: 1px solid rgba(255, 255, 255, 0.1) !important;
+                    color: #f8fafc !important;
+                }
+                .tf-popup-card.tf-dark strong { color: #f8fafc !important; }
+                .tf-popup-card.tf-dark p { color: #cbd5e1 !important; }
+                .tf-popup-card.tf-active { opacity: 1 !important; transform: translateY(0) scale(1) !important; }
+                @media (max-width: 768px) {
+                    .tf-popup-wrapper { max-width: 64% !important; bottom: 15px !important; }
+                    .tf-popup-card { width: auto !important; }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+    }
+
+    // --- 4. CONFIGURATION PARSER ---
     function getConfig() {
         if (config) return config;
         
@@ -58,11 +86,9 @@
 
         var spaceId = script.getAttribute('data-space-id');
         
-        // Auto-Detect Logic: Jahan se script load hui, wahi Base URL hai
+        // Auto-Detect Logic
         var scriptSrc = script.src || '';
         var baseUrl = scriptSrc.indexOf('/embed.js') > -1 ? scriptSrc.replace('/embed.js', '') : '';
-        
-        // Fallback for safety
         if (!baseUrl) { baseUrl = window.location.origin; }
 
         var params = new URLSearchParams();
@@ -88,12 +114,12 @@
         return config;
     }
 
-    // --- 4. CORE ENGINE (With React Fix) ---
+    // --- 5. CORE ENGINE ---
     function initTrustFlow() {
         var cfg = getConfig();
         if (!cfg) return;
 
-        // FIX: Prevent double popups (check if inside iframe)
+        // Prevent double popups (inside iframe check)
         if (window.self === window.top) {
             if (!window.TF_POPUPS_INITIALIZED) {
                 window.TF_POPUPS_INITIALIZED = true;
@@ -112,18 +138,17 @@
             return;
         }
 
-        // 2. Targeted DIV (REACT FIX)
+        // 2. Targeted DIV (Checks every second via setInterval)
         var targetDiv = document.getElementById('trustflow-widget');
         if (targetDiv) {
             if (!targetDiv.hasChildNodes()) {
-                // console.log("TF: Widget injected via Target DIV");
                 renderInsideDiv(targetDiv, cfg.widgetUrl);
                 isWidgetRendered = true;
             }
             return;
         }
 
-        // 3. Inline Script (HTML Normal Mode)
+        // 3. Inline Script Fallback
         if (cfg.scriptElement.parentNode && cfg.scriptElement.parentNode.tagName !== 'HEAD') {
             if (cfg.scriptElement.nextElementSibling && cfg.scriptElement.nextElementSibling.classList.contains('trustflow-widget-container')) {
                 isWidgetRendered = true; 
@@ -159,7 +184,7 @@
         return iframe;
     }
 
-    // --- POPUP LOGIC (Shuffle + VIP) ---
+    // --- POPUP LOGIC (Shuffle + VIP - UNTOUCHED) ---
     var globalPopupQueue = [];
     var isLoopRunning = false;
     var lastNewestId = null;
@@ -176,9 +201,9 @@
     }
 
     function fetchAndInitPopups(spaceId, baseUrl, settings) {
-        var cleanBase = 'https://trust-flow-app.vercel.app';                // IMPORTANT: Hardcoded for stability (Have to Change Later if domain changed)
+        // Keeping your Hardcoded Base URL as requested
+        var cleanBase = 'https://trust-flow-app.vercel.app'; 
         var apiUrl = cleanBase + '/api/spaces/' + spaceId + '/public-data'; 
-        console.log("TF: Initializing Popups from " + apiUrl);
         
         var fetchData = function(isFirstLoad) {
             fetch(apiUrl)
@@ -207,12 +232,12 @@
 
         if (rawList.length > 0) {
             var newest = rawList[0];
-            // VIP Logic: Agar load ke baad koi naya aaya
+            // VIP Logic
             if (isFirstLoad === false && lastNewestId && newest.id !== lastNewestId) {
                 priorityItem = newest; 
-                globalPopupQueue.push(newest); // Add to queue for future
+                globalPopupQueue.push(newest); 
             }
-            // First Load: Shuffle everything
+            // Shuffle on First Load
             if (isFirstLoad) {
                 globalPopupQueue = shuffleArray(rawList);
             }
@@ -244,13 +269,12 @@
 
             try {
                 var item;
-                // VIP Check
+                // VIP Logic check
                 if (priorityItem) {
                     item = priorityItem;
                     priorityItem = null; 
-                    // Note: currentIndex reset nahi kiya
                 } else {
-                    // Loop End Check -> Reshuffle
+                    // Reshuffle if loop ends
                     if (currentIndex >= globalPopupQueue.length) {
                         globalPopupQueue = shuffleArray(globalPopupQueue);
                         currentIndex = 0;
@@ -351,8 +375,7 @@
         overlay.onclick = function(e) { if (e.target === overlay) closeAction(); };
     }
 
-    // --- INITIALIZATION ---
-    initTrustFlow();
-    setInterval(initTrustFlow, 1000);
+    // --- STARTUP LOGIC ---
+    autoStart();
 
 })();
