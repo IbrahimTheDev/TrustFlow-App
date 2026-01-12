@@ -1,16 +1,11 @@
 (function() {
     "use strict";
 
-    // =================================================================
-    // ⚠️ IMPORTANT: DEV CONFIGURATION
-    var HARDCODED_BACKEND_URL = "https://probable-tribble-4jg7p9wrjxjvhj79g-8000.app.github.dev"; 
-    // =================================================================
-
     // --- 1. CONFIGURATION & STATE ---
     var config = null; 
     var isWidgetRendered = false; 
 
-    // --- 2. CSS STYLES (Untouched) ---
+    // --- 2. CSS STYLES (Styles wahi purane hain) ---
     var styleId = 'tf-embed-css';
     if (!document.getElementById(styleId)) {
         var style = document.createElement('style');
@@ -54,18 +49,21 @@
         document.head.appendChild(style);
     }
 
-    // --- 3. CONFIG PARSER ---
+    // --- 3. AUTO-DETECT CONFIGURATION (No Hardcoding) ---
     function getConfig() {
         if (config) return config;
+        
         var script = document.querySelector('script[data-space-id]');
         if (!script) return null;
 
         var spaceId = script.getAttribute('data-space-id');
+        
+        // Auto-Detect Logic: Jahan se script load hui, wahi Base URL hai
         var scriptSrc = script.src || '';
-        var widgetBase = scriptSrc.indexOf('/embed.js') > -1 ? scriptSrc.replace('/embed.js', '') : 'https://trustflow-nu.vercel.app';
-        var apiBaseUrl = HARDCODED_BACKEND_URL || widgetBase; 
-
-        if (apiBaseUrl.endsWith('/')) apiBaseUrl = apiBaseUrl.slice(0, -1);
+        var baseUrl = scriptSrc.indexOf('/embed.js') > -1 ? scriptSrc.replace('/embed.js', '') : '';
+        
+        // Fallback for safety
+        if (!baseUrl) { baseUrl = window.location.origin; }
 
         var params = new URLSearchParams();
         params.append('theme', script.getAttribute('data-theme') || 'light');
@@ -80,8 +78,8 @@
         config = {
             scriptElement: script,
             spaceId: spaceId,
-            apiBaseUrl: apiBaseUrl, 
-            widgetUrl: widgetBase + '/widget/' + spaceId + '?' + params.toString(),
+            baseUrl: baseUrl,
+            widgetUrl: baseUrl + '/widget/' + spaceId + '?' + params.toString(),
             theme: script.getAttribute('data-theme') || 'light',
             placement: script.getAttribute('data-placement') || 'section',
             cardTheme: script.getAttribute('data-card-theme'),
@@ -90,21 +88,22 @@
         return config;
     }
 
-    // --- 4. CORE ENGINE ---
+    // --- 4. CORE ENGINE (With React Fix) ---
     function initTrustFlow() {
         var cfg = getConfig();
         if (!cfg) return;
 
-        // Prevent Double Popups (Iframe Check)
+        // FIX: Prevent double popups (check if inside iframe)
         if (window.self === window.top) {
             if (!window.TF_POPUPS_INITIALIZED) {
                 window.TF_POPUPS_INITIALIZED = true;
-                fetchAndInitPopups(cfg.spaceId, cfg.apiBaseUrl, cfg);
+                fetchAndInitPopups(cfg.spaceId, cfg.baseUrl, cfg);
             }
         }
 
         if (isWidgetRendered) return; 
 
+        // 1. Floating Widget
         if (cfg.placement === 'body') {
             if (!document.getElementById('tf-floating-launcher')) {
                 renderFloatingWidget(cfg.widgetUrl, cfg.theme);
@@ -113,16 +112,18 @@
             return;
         }
 
+        // 2. Targeted DIV (REACT FIX)
         var targetDiv = document.getElementById('trustflow-widget');
         if (targetDiv) {
             if (!targetDiv.hasChildNodes()) {
-                console.log("TF: Injecting widget into target div");
+                // console.log("TF: Widget injected via Target DIV");
                 renderInsideDiv(targetDiv, cfg.widgetUrl);
                 isWidgetRendered = true;
             }
             return;
         }
 
+        // 3. Inline Script (HTML Normal Mode)
         if (cfg.scriptElement.parentNode && cfg.scriptElement.parentNode.tagName !== 'HEAD') {
             if (cfg.scriptElement.nextElementSibling && cfg.scriptElement.nextElementSibling.classList.contains('trustflow-widget-container')) {
                 isWidgetRendered = true; 
@@ -158,16 +159,12 @@
         return iframe;
     }
 
-    // =========================================================
-    // --- UPDATED POPUP LOGIC (Shuffle + VIP Resume) ---
-    // =========================================================
-    
+    // --- POPUP LOGIC (Shuffle + VIP) ---
     var globalPopupQueue = [];
     var isLoopRunning = false;
     var lastNewestId = null;
-    var priorityItem = null; // VIP Store
+    var priorityItem = null; 
 
-    // Helper: Fisher-Yates Shuffle Algorithm
     function shuffleArray(array) {
         for (var i = array.length - 1; i > 0; i--) {
             var j = Math.floor(Math.random() * (i + 1));
@@ -178,14 +175,14 @@
         return array;
     }
 
-    function fetchAndInitPopups(spaceId, apiBase, settings) {
-        var cleanBase = apiBase.endsWith('/') ? apiBase.slice(0, -1) : apiBase;
+    function fetchAndInitPopups(spaceId, baseUrl, settings) {
+        var cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
         var apiUrl = cleanBase + '/api/spaces/' + spaceId + '/public-data'; 
         
         var fetchData = function(isFirstLoad) {
             fetch(apiUrl)
                 .then(function(res) { 
-                    if (!res.ok) throw new Error("API Error " + res.status);
+                    if (!res.ok) throw new Error("API Error");
                     return res.json(); 
                 })
                 .then(function(data) {
@@ -196,37 +193,28 @@
                         }
                     }
                 })
-                .catch(function(err) { console.warn('TF Popups Error:', err); });
+                .catch(function(err) { /* Silent Fail */ });
         };
         fetchData(true);
-        setInterval(function() { fetchData(false); }, 100); 
+        setInterval(function() { fetchData(false); }, 30000); 
     }
 
     function updateQueue(newTestimonials, isFirstLoad) {
         if (!newTestimonials) return;
-        
-        // 1. Get raw list (descending time) just to identify newest
         var rawList = newTestimonials.filter(function(t) { return t.is_liked; })
             .sort(function(a, b) { return new Date(b.created_at) - new Date(a.created_at); });
 
         if (rawList.length > 0) {
             var newest = rawList[0];
-
-            // 2. CHECK FOR VIP (New Item Detection)
+            // VIP Logic: Agar load ke baad koi naya aaya
             if (isFirstLoad === false && lastNewestId && newest.id !== lastNewestId) {
-                console.log("🔥 New Testimonial Detected! Triggering VIP.");
-                priorityItem = newest; // Save to VIP
-                
-                // Important: Also add to main list so it appears in future rotations
-                globalPopupQueue.push(newest); 
+                priorityItem = newest; 
+                globalPopupQueue.push(newest); // Add to queue for future
             }
-            
-            // 3. FIRST LOAD: Shuffle everything
+            // First Load: Shuffle everything
             if (isFirstLoad) {
-                console.log("TF: First Load - Shuffling Queue");
                 globalPopupQueue = shuffleArray(rawList);
             }
-
             lastNewestId = newest.id;
         }
     }
@@ -237,7 +225,6 @@
         
         var theme = scriptSettings.cardTheme || apiSettings.cardTheme || 'light';
         var position = scriptSettings.popupPosition || apiSettings.popupPosition || 'bottom-left';
-
         var wrapperId = 'tf-popup-root';
         if (document.getElementById(wrapperId)) return;
 
@@ -246,7 +233,7 @@
         wrapper.className = 'tf-popup-wrapper tf-popup-' + position;
         document.body.appendChild(wrapper);
 
-        var currentIndex = 0; // Tracks position in SHUFFLED queue
+        var currentIndex = 0; 
         var isPaused = false;
 
         function showNextPopup() {
@@ -256,27 +243,21 @@
 
             try {
                 var item;
-                
-                // --- LOGIC: VIP vs NORMAL ---
+                // VIP Check
                 if (priorityItem) {
-                    // CASE A: New VIP Item arrived
                     item = priorityItem;
-                    priorityItem = null; // Clear VIP slot (khali baith gaya)
-                    // Note: We do NOT reset currentIndex. Loop continues naturally after this.
+                    priorityItem = null; 
+                    // Note: currentIndex reset nahi kiya
                 } else {
-                    // CASE B: Normal Shuffled Loop
+                    // Loop End Check -> Reshuffle
                     if (currentIndex >= globalPopupQueue.length) {
-                        // Loop finished? Reshuffle and start over!
-                        console.log("TF: Loop finished. Reshuffling...");
                         globalPopupQueue = shuffleArray(globalPopupQueue);
                         currentIndex = 0;
                     }
-
                     item = globalPopupQueue[currentIndex];
                     currentIndex++;
                 }
 
-                // --- UI Rendering (Standard) ---
                 var safeFallback = "data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23cbd5e1'%3E%3Cpath d='M24 20.993V24H0v-2.996A14.977 14.977 0 0112.004 15c4.904 0 9.26 2.354 11.996 5.993zM16.002 8.999a4 4 0 11-8 0 4 4 0 018 0z' /%3E%3C/svg%3E";
                 var avatarUrl = item.respondent_photo_url;
                 if (!avatarUrl) { avatarUrl = 'https://ui-avatars.com/api/?background=random&color=fff&name=' + encodeURIComponent(item.respondent_name); }
@@ -310,17 +291,14 @@
                 var gap = (apiSettings.popupGap || 10) * 1000;
                 setTimeout(function() {
                     if (card) card.classList.remove('tf-active');
-                    setTimeout(function() {
-                        showNextPopup();
-                    }, gap);
+                    setTimeout(function() { showNextPopup(); }, gap);
                 }, duration);
 
-            } catch (err) { console.warn('TF Popup recovered', err); setTimeout(showNextPopup, 5000); }
+            } catch (err) { setTimeout(showNextPopup, 5000); }
         }
         setTimeout(showNextPopup, (apiSettings.popupDelay || 2) * 1000);
     }
 
-    // --- 5. FLOATING WIDGET UI ---
     function renderFloatingWidget(url, theme) {
         var isDark = theme === 'dark';
         var launcher = document.createElement('div');
@@ -333,7 +311,6 @@
             transition: 'transform 0.2s ease', border: isDark ? '1px solid #334155' : '1px solid #e2e8f0'
         });
         launcher.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="#fbbf24" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`;
-        
         var overlay = document.createElement('div');
         Object.assign(overlay.style, {
             position: 'fixed', top: '0', left: '0', width: '100vw', height: '100vh',
@@ -341,7 +318,6 @@
             alignItems: 'center', justifyContent: 'center', opacity: '0',
             transition: 'opacity 0.3s ease', backdropFilter: 'blur(4px)'
         });
-
         var modalContent = document.createElement('div');
         Object.assign(modalContent.style, {
             width: '90%', maxWidth: '1000px', maxHeight: '85vh',
@@ -349,32 +325,25 @@
             boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)', overflow: 'hidden',
             position: 'relative', display: 'flex', flexDirection: 'column'
         });
-
         var header = document.createElement('div');
         Object.assign(header.style, { padding: '16px 24px', borderBottom: isDark ? '1px solid #1e293b' : '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' });
-        
         var title = document.createElement('h3');
         title.innerText = "Wall of Love";
         Object.assign(title.style, { margin: '0', fontFamily: 'sans-serif', fontWeight: '600', color: isDark ? '#f8fafc' : '#0f172a' });
-        
         var closeBtn = document.createElement('button');
         closeBtn.innerHTML = '&times;';
         Object.assign(closeBtn.style, { background: 'none', border: 'none', fontSize: '28px', cursor: 'pointer', color: '#64748b' });
-
         var iframeContainer = document.createElement('div');
         Object.assign(iframeContainer.style, { flex: '1', overflowY: 'auto', padding: '0', WebkitOverflowScrolling: 'touch' });
-
         var iframe = createIframe(url);
         iframe.style.minHeight = '400px'; 
         iframe.style.height = '100%'; 
-
         header.appendChild(title); header.appendChild(closeBtn);
         iframeContainer.appendChild(iframe);
         modalContent.appendChild(header); modalContent.appendChild(iframeContainer);
         overlay.appendChild(modalContent);
         document.body.appendChild(launcher);
         document.body.appendChild(overlay);
-
         launcher.onclick = function() { overlay.style.display = 'flex'; setTimeout(function() { overlay.style.opacity = '1'; }, 10); };
         var closeAction = function() { overlay.style.opacity = '0'; setTimeout(function() { overlay.style.display = 'none'; }, 300); };
         closeBtn.onclick = closeAction;
