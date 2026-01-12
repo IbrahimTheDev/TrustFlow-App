@@ -362,7 +362,7 @@
         var fetchData = function(isFirstLoad) {
             fetch(apiUrl)
                 .then(function(res) { 
-                    if (!res.ok) throw new Error('Network response not ok');
+                    if (!res.ok) throw new Error('Network response failed: ' + res.status + ' ' + res.statusText);
                     return res.json(); 
                 })
                 .then(function(data) {
@@ -463,7 +463,7 @@
                 // Try photo, fallback to UI Avatar, then safeFallback
                 var avatarUrl = item.respondent_photo_url;
                 if (!avatarUrl) {
-                    avatarUrl = 'https://ui-avatars.com/api/?background=random&color=fff&name=' + encodeURIComponent(item.respondent_name || 'User');
+                    avatarUrl = 'https://ui-avatars.com/api/?background=random&color=fff&name=' + encodeURIComponent(item.respondent_name || 'Anonymous');
                 }
 
                 var card = document.createElement('div');
