@@ -14,7 +14,7 @@
         // Check: Kya page poori tarah load ho gaya hai?
         if (document.readyState === 'complete' || document.readyState === 'interactive') {
             // Haan: To turant chalu karo (Next.js/React Hydrated)
-            setTimeout(initEngine, 0);
+            setTimeout(initEngine, 2000);
         } else {
             // Nahi: To 'load' event ka wait karo (Standard HTML/Loading phase)
             window.addEventListener('load', initEngine);
