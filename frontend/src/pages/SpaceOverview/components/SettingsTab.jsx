@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { 
   Settings, Trash2, Globe, Mail, Download, AlertTriangle, 
   CheckCircle, AlertCircle, Save, Loader2, Lock, ShieldAlert,
-  X, Check
+  X, Check, Crown, Link2, ExternalLink, Copy, RefreshCw, Clock
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import confetti from 'canvas-confetti';
@@ -146,9 +146,127 @@ const SettingsTab = ({ space, spaceId, navigate, deleteSpace, updateSpaceState, 
   const [confirmAction, setConfirmAction] = useState(null); // 'delete' or 'update_slug'
   const [isProcessingAction, setIsProcessingAction] = useState(false);
 
+  // --- CUSTOM DOMAIN STATES (Pro Feature) ---
+  const [customDomain, setCustomDomain] = useState(null); // Current domain from DB
+  const [newDomainInput, setNewDomainInput] = useState('');
+  const [isDomainLoading, setIsDomainLoading] = useState(true);
+  const [isDomainSaving, setIsDomainSaving] = useState(false);
+  const [isDomainVerifying, setIsDomainVerifying] = useState(false);
+  const [showDnsInstructions, setShowDnsInstructions] = useState(false);
+
+  // API Base URL
+  const API_BASE = process.env.REACT_APP_BACKEND_URL || process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
   const showToast = (message, type = 'success') => {
     setNotification({ isVisible: true, message, type });
     setTimeout(() => setNotification(prev => ({ ...prev, isVisible: false })), 3000);
+  };
+
+  // --- FETCH CUSTOM DOMAIN ON MOUNT ---
+  useEffect(() => {
+    const fetchCustomDomain = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/custom-domains/${spaceId}`);
+        const data = await res.json();
+        if (data.status === 'success' && data.domain) {
+          setCustomDomain(data.domain);
+        }
+      } catch (err) {
+        console.error('Failed to fetch custom domain:', err);
+      } finally {
+        setIsDomainLoading(false);
+      }
+    };
+    fetchCustomDomain();
+  }, [spaceId, API_BASE]);
+
+  // --- CUSTOM DOMAIN HANDLERS ---
+  const handleAddDomain = async () => {
+    if (!newDomainInput.trim()) return;
+    
+    // Basic validation
+    const domainRegex = /^(?!:\/\/)([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$/;
+    if (!domainRegex.test(newDomainInput.trim())) {
+      showToast('Please enter a valid domain (e.g., testimonials.yourbrand.com)', 'error');
+      return;
+    }
+
+    setIsDomainSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/custom-domains`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ space_id: spaceId, domain: newDomainInput.trim() })
+      });
+      const data = await res.json();
+      
+      if (res.ok && data.status === 'success') {
+        setCustomDomain(data.domain);
+        setNewDomainInput('');
+        setShowDnsInstructions(true);
+        showToast('Domain added! Configure DNS to complete setup.', 'success');
+      } else {
+        showToast(data.detail || 'Failed to add domain', 'error');
+      }
+    } catch (err) {
+      showToast('Failed to add domain', 'error');
+    } finally {
+      setIsDomainSaving(false);
+    }
+  };
+
+  const handleVerifyDomain = async () => {
+    if (!customDomain) return;
+    
+    setIsDomainVerifying(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/custom-domains/verify/${customDomain.id}`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      
+      if (data.verified) {
+        // DNS verified - now awaiting admin activation
+        setCustomDomain(prev => ({ ...prev, status: data.dns_status || 'dns_verified' }));
+        showToast('DNS Verified! Your domain will be activated within 24-48 hours.', 'success');
+        confetti({ particleCount: 50, spread: 40, origin: { y: 0.7 } });
+      } else {
+        setCustomDomain(prev => ({ ...prev, status: 'failed' }));
+        showToast(data.message || 'DNS not configured correctly', 'error');
+      }
+    } catch (err) {
+      showToast('Verification failed', 'error');
+    } finally {
+      setIsDomainVerifying(false);
+    }
+  };
+
+  const handleRemoveDomain = async () => {
+    if (!customDomain) return;
+    
+    setIsDomainSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/custom-domains/${customDomain.id}`, {
+        method: 'DELETE'
+      });
+      
+      if (res.ok) {
+        setCustomDomain(null);
+        setShowDnsInstructions(false);
+        showToast('Domain removed', 'success');
+      } else {
+        showToast('Failed to remove domain', 'error');
+      }
+    } catch (err) {
+      showToast('Failed to remove domain', 'error');
+    } finally {
+      setIsDomainSaving(false);
+    }
+  };
+
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    showToast('Copied to clipboard!', 'success');
   };
 
   // --- LIVE SLUG CHECKER ---
@@ -397,6 +515,300 @@ const SettingsTab = ({ space, spaceId, navigate, deleteSpace, updateSpaceState, 
               {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : saveSuccess ? <>Saved!</> : <>Save Changes</>}
             </Button>
           </CardFooter>
+        </Card>
+
+        {/* 1.5 CUSTOM DOMAIN (Pro Feature) */}
+        <Card className="border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-violet-100 dark:bg-violet-900/20 rounded-lg">
+                  <Link2 className="w-5 h-5 text-violet-600" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <CardTitle className="text-lg">Custom Domain</CardTitle>
+                    <Badge className="bg-violet-600 text-white text-[10px] px-2 py-0.5 font-semibold border-0">
+                      <Crown className="w-3 h-3 mr-1" />
+                      PRO
+                    </Badge>
+                  </div>
+                  <CardDescription>Connect your own domain for a branded experience.</CardDescription>
+                </div>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {isDomainLoading ? (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="text-sm">Loading domain settings...</span>
+              </div>
+            ) : customDomain ? (
+              // Domain is configured - show status
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-4 bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${
+                      customDomain.status === 'active' 
+                        ? 'bg-green-100 dark:bg-green-900/30' 
+                        : customDomain.status === 'dns_verified' 
+                          ? 'bg-blue-100 dark:bg-blue-900/30'
+                          : customDomain.status === 'pending' 
+                            ? 'bg-yellow-100 dark:bg-yellow-900/30' 
+                            : customDomain.status === 'disconnected'
+                              ? 'bg-orange-100 dark:bg-orange-900/30'
+                              : 'bg-red-100 dark:bg-red-900/30'
+                    }`}>
+                      {customDomain.status === 'active' ? (
+                        <CheckCircle className="w-5 h-5 text-green-600" />
+                      ) : customDomain.status === 'dns_verified' ? (
+                        <Clock className="w-5 h-5 text-blue-600" />
+                      ) : customDomain.status === 'pending' ? (
+                        <Loader2 className="w-5 h-5 text-yellow-600" />
+                      ) : customDomain.status === 'disconnected' ? (
+                        <AlertTriangle className="w-5 h-5 text-orange-600" />
+                      ) : (
+                        <AlertCircle className="w-5 h-5 text-red-600" />
+                      )}
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900 dark:text-white">{customDomain.domain}</p>
+                      <p className={`text-xs font-medium ${
+                        customDomain.status === 'active' 
+                          ? 'text-green-600' 
+                          : customDomain.status === 'dns_verified'
+                            ? 'text-blue-600'
+                            : customDomain.status === 'pending' 
+                              ? 'text-yellow-600' 
+                              : customDomain.status === 'disconnected'
+                                ? 'text-orange-600'
+                                : 'text-red-600'
+                      }`}>
+                        {customDomain.status === 'active' ? '✓ Connected & Active' : 
+                         customDomain.status === 'dns_verified' ? '⏳ DNS Verified - Awaiting Activation (24-48 hrs)' :
+                         customDomain.status === 'pending' ? '⏳ Pending DNS Verification' : 
+                         customDomain.status === 'disconnected' ? '⚠ Disconnected - DNS Issue Detected' :
+                         '✗ DNS Configuration Failed'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {(customDomain.status !== 'active' && customDomain.status !== 'dns_verified') && (
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={handleVerifyDomain}
+                        disabled={isDomainVerifying}
+                        className="text-xs"
+                      >
+                        {isDomainVerifying ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <RefreshCw className="w-3 h-3 mr-1" />}
+                        Verify
+                      </Button>
+                    )}
+                    {customDomain.status === 'disconnected' && (
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={handleVerifyDomain}
+                        disabled={isDomainVerifying}
+                        className="text-xs border-orange-300 text-orange-600 hover:bg-orange-50"
+                      >
+                        {isDomainVerifying ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <RefreshCw className="w-3 h-3 mr-1" />}
+                        Re-verify
+                      </Button>
+                    )}
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={handleRemoveDomain}
+                      disabled={isDomainSaving}
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/30 text-xs"
+                    >
+                      {isDomainSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* DNS Instructions (Collapsible) - Show for pending, failed, disconnected */}
+                {(customDomain.status === 'pending' || customDomain.status === 'failed' || customDomain.status === 'disconnected') && (
+                  <div className="space-y-2">
+                    <button 
+                      onClick={() => setShowDnsInstructions(!showDnsInstructions)}
+                      className="flex items-center gap-2 text-sm font-medium text-violet-700 dark:text-violet-400 hover:underline"
+                    >
+                      📋 How to Setup DNS (Step-by-Step)
+                      <motion.span animate={{ rotate: showDnsInstructions ? 180 : 0 }}>▼</motion.span>
+                    </button>
+                    
+                    <AnimatePresence>
+                      {showDnsInstructions && (
+                        <motion.div 
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="p-5 bg-white dark:bg-gray-950 rounded-xl border border-gray-200 dark:border-gray-800 space-y-5">
+                            
+                            {/* Step 1 */}
+                            <div className="flex gap-3">
+                              <div className="flex-shrink-0 w-7 h-7 bg-violet-100 dark:bg-violet-900/30 rounded-full flex items-center justify-center">
+                                <span className="text-sm font-bold text-violet-700 dark:text-violet-400">1</span>
+                              </div>
+                              <div>
+                                <p className="font-medium text-gray-900 dark:text-white">Login to your domain provider</p>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                  Go to where you purchased your domain (GoDaddy, Namecheap, Cloudflare, Google Domains, etc.)
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Step 2 */}
+                            <div className="flex gap-3">
+                              <div className="flex-shrink-0 w-7 h-7 bg-violet-100 dark:bg-violet-900/30 rounded-full flex items-center justify-center">
+                                <span className="text-sm font-bold text-violet-700 dark:text-violet-400">2</span>
+                              </div>
+                              <div>
+                                <p className="font-medium text-gray-900 dark:text-white">Navigate to DNS Settings</p>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                  Look for "DNS Management", "DNS Records", or "DNS Zone" in your domain settings.
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Step 3 */}
+                            <div className="flex gap-3">
+                              <div className="flex-shrink-0 w-7 h-7 bg-violet-100 dark:bg-violet-900/30 rounded-full flex items-center justify-center">
+                                <span className="text-sm font-bold text-violet-700 dark:text-violet-400">3</span>
+                              </div>
+                              <div className="flex-1">
+                                <p className="font-medium text-gray-900 dark:text-white">Add a new CNAME record</p>
+                                <p className="text-sm text-muted-foreground mt-1 mb-3">
+                                  Create a new DNS record with these exact values:
+                                </p>
+                                
+                                {/* DNS Values Table */}
+                                <div className="bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
+                                  <div className="grid grid-cols-[100px_1fr_40px] items-center p-3 border-b border-gray-200 dark:border-gray-800">
+                                    <span className="text-xs font-medium text-muted-foreground uppercase">Type</span>
+                                    <span className="font-mono text-sm font-semibold text-gray-900 dark:text-white">CNAME</span>
+                                    <span></span>
+                                  </div>
+                                  <div className="grid grid-cols-[100px_1fr_40px] items-center p-3 border-b border-gray-200 dark:border-gray-800">
+                                    <span className="text-xs font-medium text-muted-foreground uppercase">Name</span>
+                                    <span className="font-mono text-sm font-semibold text-violet-600 dark:text-violet-400 break-all">
+                                      {customDomain.domain.split('.')[0]}
+                                    </span>
+                                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => copyToClipboard(customDomain.domain.split('.')[0])}>
+                                      <Copy className="w-3.5 h-3.5 text-muted-foreground" />
+                                    </Button>
+                                  </div>
+                                  <div className="grid grid-cols-[100px_1fr_40px] items-center p-3">
+                                    <span className="text-xs font-medium text-muted-foreground uppercase">Target</span>
+                                    <span className="font-mono text-sm font-semibold text-green-600 dark:text-green-400 break-all">
+                                      cname.vercel-dns.com
+                                    </span>
+                                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => copyToClipboard('cname.vercel-dns.com')}>
+                                      <Copy className="w-3.5 h-3.5 text-muted-foreground" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Step 4 */}
+                            <div className="flex gap-3">
+                              <div className="flex-shrink-0 w-7 h-7 bg-violet-100 dark:bg-violet-900/30 rounded-full flex items-center justify-center">
+                                <span className="text-sm font-bold text-violet-700 dark:text-violet-400">4</span>
+                              </div>
+                              <div>
+                                <p className="font-medium text-gray-900 dark:text-white">Save & Wait for propagation</p>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                  Save your DNS record. It can take <strong>5 minutes to 48 hours</strong> for changes to propagate globally.
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Step 5 */}
+                            <div className="flex gap-3">
+                              <div className="flex-shrink-0 w-7 h-7 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
+                                <span className="text-sm font-bold text-green-700 dark:text-green-400">5</span>
+                              </div>
+                              <div>
+                                <p className="font-medium text-gray-900 dark:text-white">Click "Verify" button above</p>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                  Once DNS is configured, click the Verify button to confirm your domain is connected.
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Help Links */}
+                            <div className="pt-3 border-t border-gray-200 dark:border-gray-800">
+                              <p className="text-xs text-muted-foreground mb-2">📚 DNS Setup Guides:</p>
+                              <div className="flex flex-wrap gap-2">
+                                {[
+                                  { name: 'Cloudflare', url: 'https://developers.cloudflare.com/dns/manage-dns-records/how-to/create-dns-records/' },
+                                  { name: 'GoDaddy', url: 'https://www.godaddy.com/help/add-a-cname-record-19236' },
+                                  { name: 'Namecheap', url: 'https://www.namecheap.com/support/knowledgebase/article.aspx/9646/2237/how-to-create-a-cname-record-for-your-domain/' },
+                                  { name: 'Google Domains', url: 'https://support.google.com/domains/answer/9211383' },
+                                ].map((provider) => (
+                                  <a 
+                                    key={provider.name}
+                                    href={provider.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded-md text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                                  >
+                                    {provider.name}
+                                    <ExternalLink className="w-3 h-3" />
+                                  </a>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* Note */}
+                            <div className="flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-100 dark:border-blue-900/50">
+                              <AlertCircle className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                              <p className="text-xs text-blue-700 dark:text-blue-300">
+                                <strong>Tip:</strong> If you're using Cloudflare, make sure to set the proxy status to "DNS Only" (gray cloud) for the CNAME record.
+                              </p>
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
+              </div>
+            ) : (
+              // No domain configured - show input
+              <div className="space-y-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="customDomain">Your Domain</Label>
+                  <div className="flex gap-2">
+                    <Input 
+                      id="customDomain"
+                      value={newDomainInput}
+                      onChange={(e) => setNewDomainInput(e.target.value.toLowerCase().trim())}
+                      placeholder="testimonials.yourbrand.com"
+                      className="flex-1 bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800"
+                    />
+                    <Button 
+                      onClick={handleAddDomain}
+                      disabled={isDomainSaving || !newDomainInput.trim()}
+                      className="bg-violet-600 hover:bg-violet-700 text-white"
+                    >
+                      {isDomainSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Connect'}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Enter a subdomain you own (e.g., testimonials.yourbrand.com or reviews.mysite.com)
+                  </p>
+                </div>
+              </div>
+            )}
+          </CardContent>
         </Card>
 
         {/* 2. NOTIFICATIONS & EXPORT (Same as before) */}

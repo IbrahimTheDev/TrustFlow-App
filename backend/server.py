@@ -63,6 +63,20 @@ class SpacePublic(BaseModel):
 class WidgetSettingsUpdate(BaseModel):
     settings: Dict[str, Any]
 
+# --- Custom Domain Models ---
+class CustomDomainCreate(BaseModel):
+    space_id: str
+    domain: str
+
+class CustomDomainResponse(BaseModel):
+    id: str
+    space_id: str
+    domain: str
+    status: str
+    dns_verified_at: Optional[str] = None
+    created_at: str
+    updated_at: str
+
 # --- Routes ---
 
 # --- WIDGET SETTINGS ROUTES ---
@@ -214,6 +228,425 @@ async def setup_database():
             "message": str(e),
             "hint": "Please create tables in Supabase Dashboard"
         }
+
+
+# --- CUSTOM DOMAIN ROUTES (Pro Feature) ---
+
+@api_router.get("/custom-domains/{space_id}")
+async def get_custom_domain(space_id: str):
+    """Get custom domain for a specific space"""
+    try:
+        response = supabase.table('custom_domains') \
+            .select('*') \
+            .eq('space_id', space_id) \
+            .execute()
+        
+        if response.data and len(response.data) > 0:
+            return {"status": "success", "domain": response.data[0]}
+        
+        return {"status": "success", "domain": None}
+    
+    except Exception as e:
+        logger.error(f"Error fetching custom domain: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch custom domain")
+
+
+@api_router.get("/custom-domains/resolve")
+async def resolve_custom_domain(domain: str):
+    """Resolve a custom domain to its space - used by frontend for custom domain routing"""
+    try:
+        # Lookup domain in custom_domains table
+        response = supabase.table('custom_domains') \
+            .select('*, spaces(id, slug, space_name, logo_url, header_title, custom_message, collect_star_rating)') \
+            .eq('domain', domain.lower().strip()) \
+            .eq('status', 'verified') \
+            .execute()
+        
+        if response.data and len(response.data) > 0:
+            domain_data = response.data[0]
+            space_data = domain_data.get('spaces')
+            
+            if space_data:
+                return {
+                    "status": "success",
+                    "space": space_data,
+                    "domain": {
+                        "id": domain_data['id'],
+                        "domain": domain_data['domain'],
+                        "status": domain_data['status']
+                    }
+                }
+        
+        # Domain not found or not verified
+        return {"status": "error", "message": "Domain not configured or not verified", "space": None}
+    
+    except Exception as e:
+        logger.error(f"Error resolving custom domain: {e}")
+        return {"status": "error", "message": "Failed to resolve domain", "space": None}
+
+
+@api_router.post("/custom-domains")
+async def add_custom_domain(data: CustomDomainCreate):
+    """Add a custom domain to a space"""
+    try:
+        # Check if space already has a custom domain
+        existing = supabase.table('custom_domains') \
+            .select('id') \
+            .eq('space_id', data.space_id) \
+            .execute()
+        
+        if existing.data and len(existing.data) > 0:
+            raise HTTPException(status_code=400, detail="Space already has a custom domain. Remove it first.")
+        
+        # Check if domain is already in use
+        domain_check = supabase.table('custom_domains') \
+            .select('id') \
+            .eq('domain', data.domain.lower().strip()) \
+            .execute()
+        
+        if domain_check.data and len(domain_check.data) > 0:
+            raise HTTPException(status_code=400, detail="This domain is already registered.")
+        
+        # Insert new custom domain
+        new_domain = {
+            'space_id': data.space_id,
+            'domain': data.domain.lower().strip(),
+            'status': 'pending'
+        }
+        
+        response = supabase.table('custom_domains') \
+            .insert(new_domain) \
+            .execute()
+        
+        if response.data:
+            return {"status": "success", "domain": response.data[0], "message": "Domain added. Please configure DNS."}
+        
+        raise HTTPException(status_code=500, detail="Failed to add domain")
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error adding custom domain: {e}")
+        raise HTTPException(status_code=500, detail="Failed to add custom domain")
+
+
+@api_router.post("/custom-domains/verify/{domain_id}")
+async def verify_custom_domain(domain_id: str):
+    """Verify DNS configuration for a custom domain"""
+    import dns.resolver
+    
+    # Vercel's CNAME target (universal for all Vercel-hosted domains)
+    VERCEL_CNAME_TARGETS = ['cname.vercel-dns.com', 'cname-china.vercel-dns.com']
+    
+    try:
+        # Get domain info (simplified query)
+        domain_res = supabase.table('custom_domains') \
+            .select('*') \
+            .eq('id', domain_id) \
+            .single() \
+            .execute()
+        
+        if not domain_res.data:
+            raise HTTPException(status_code=404, detail="Domain not found")
+        
+        domain_info = domain_res.data
+        domain_name = domain_info['domain']
+        
+        # Proper DNS CNAME Lookup
+        try:
+            # Query CNAME record
+            answers = dns.resolver.resolve(domain_name, 'CNAME')
+            
+            cname_found = None
+            for rdata in answers:
+                cname_found = str(rdata.target).rstrip('.')
+                break
+            
+            if cname_found:
+                # Check if CNAME points to Vercel
+                if cname_found.lower() in [t.lower() for t in VERCEL_CNAME_TARGETS]:
+                    # CNAME is correct - mark as dns_verified (awaiting admin activation)
+                    supabase.table('custom_domains') \
+                        .update({
+                            'status': 'dns_verified',
+                            'dns_verified_at': datetime.now(timezone.utc).isoformat()
+                        }) \
+                        .eq('id', domain_id) \
+                        .execute()
+                    
+                    # Log for admin notification
+                    logger.info(f"🔔 ADMIN ACTION REQUIRED: Domain '{domain_name}' DNS verified. Add to Vercel dashboard.")
+                    
+                    return {
+                        "status": "success",
+                        "verified": True,
+                        "dns_status": "dns_verified",
+                        "message": "DNS verified! Awaiting activation by admin. This usually takes 24-48 hours.",
+                        "cname_found": cname_found
+                    }
+                else:
+                    # CNAME exists but points to wrong target
+                    supabase.table('custom_domains') \
+                        .update({'status': 'failed'}) \
+                        .eq('id', domain_id) \
+                        .execute()
+                    
+                    return {
+                        "status": "success",
+                        "verified": False,
+                        "message": f"CNAME points to wrong target. Found: {cname_found}. Expected: cname.vercel-dns.com",
+                        "expected_cname": "cname.vercel-dns.com",
+                        "cname_found": cname_found
+                    }
+            else:
+                # No CNAME found
+                supabase.table('custom_domains') \
+                    .update({'status': 'failed'}) \
+                    .eq('id', domain_id) \
+                    .execute()
+                
+                return {
+                    "status": "success",
+                    "verified": False,
+                    "message": "No CNAME record found.",
+                    "expected_cname": "cname.vercel-dns.com"
+                }
+                
+        except dns.resolver.NXDOMAIN:
+            # Domain does not exist
+            supabase.table('custom_domains') \
+                .update({'status': 'failed'}) \
+                .eq('id', domain_id) \
+                .execute()
+            
+            return {
+                "status": "success",
+                "verified": False,
+                "message": "Domain does not exist. Please check the domain name.",
+                "expected_cname": "cname.vercel-dns.com"
+            }
+            
+        except dns.resolver.NoAnswer:
+            # No CNAME record configured
+            supabase.table('custom_domains') \
+                .update({'status': 'failed'}) \
+                .eq('id', domain_id) \
+                .execute()
+            
+            return {
+                "status": "success",
+                "verified": False,
+                "message": "No CNAME record found. Please add the CNAME record in your DNS settings.",
+                "expected_cname": "cname.vercel-dns.com"
+            }
+            
+        except dns.resolver.Timeout:
+            return {
+                "status": "error",
+                "verified": False,
+                "message": "DNS lookup timed out. Please try again.",
+                "expected_cname": "cname.vercel-dns.com"
+            }
+        
+        except dns.resolver.NoNameservers:
+            # No nameservers available
+            supabase.table('custom_domains') \
+                .update({'status': 'failed'}) \
+                .eq('id', domain_id) \
+                .execute()
+            
+            return {
+                "status": "success",
+                "verified": False,
+                "message": "Could not reach DNS servers. Please try again later.",
+                "expected_cname": "cname.vercel-dns.com"
+            }
+        
+        except Exception as dns_error:
+            # Catch any other DNS errors - give specific guidance
+            error_str = str(dns_error).lower()
+            logger.error(f"DNS lookup error for {domain_name}: {dns_error}")
+            
+            supabase.table('custom_domains') \
+                .update({'status': 'failed'}) \
+                .eq('id', domain_id) \
+                .execute()
+            
+            # Provide helpful message based on error type
+            if 'nxdomain' in error_str or 'does not exist' in error_str:
+                message = f"Domain '{domain_name}' does not exist or has no DNS records."
+            elif 'no answer' in error_str or 'no cname' in error_str:
+                message = "No CNAME record found. Please add the CNAME record pointing to cname.vercel-dns.com"
+            elif 'timeout' in error_str:
+                message = "DNS lookup timed out. Please wait a few minutes and try again."
+            else:
+                message = f"DNS lookup failed: {str(dns_error)[:100]}. Make sure your domain has a CNAME record pointing to cname.vercel-dns.com"
+            
+            return {
+                "status": "success",
+                "verified": False,
+                "message": message,
+                "expected_cname": "cname.vercel-dns.com"
+            }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error verifying domain: {e}")
+        raise HTTPException(status_code=500, detail="Verification failed")
+
+
+@api_router.delete("/custom-domains/{domain_id}")
+async def delete_custom_domain(domain_id: str):
+    """Remove a custom domain"""
+    try:
+        response = supabase.table('custom_domains') \
+            .delete() \
+            .eq('id', domain_id) \
+            .execute()
+        
+        return {"status": "success", "message": "Domain removed successfully"}
+    
+    except Exception as e:
+        logger.error(f"Error deleting custom domain: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete domain")
+
+
+@api_router.post("/custom-domains/activate/{domain_id}")
+async def activate_custom_domain(domain_id: str, admin_key: str = None):
+    """Admin endpoint: Mark domain as active after adding to Vercel"""
+    # Simple admin key check (you can make this more secure)
+    ADMIN_KEY = os.environ.get('ADMIN_API_KEY', 'trustflow-admin-secret')
+    
+    if admin_key != ADMIN_KEY:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    try:
+        # Get domain info
+        domain_res = supabase.table('custom_domains') \
+            .select('*') \
+            .eq('id', domain_id) \
+            .single() \
+            .execute()
+        
+        if not domain_res.data:
+            raise HTTPException(status_code=404, detail="Domain not found")
+        
+        # Only activate if DNS is verified
+        if domain_res.data['status'] not in ['dns_verified', 'disconnected']:
+            raise HTTPException(status_code=400, detail="Domain DNS must be verified first")
+        
+        # Mark as active
+        supabase.table('custom_domains') \
+            .update({
+                'status': 'active',
+                'activated_at': datetime.now(timezone.utc).isoformat()
+            }) \
+            .eq('id', domain_id) \
+            .execute()
+        
+        logger.info(f"✅ Domain '{domain_res.data['domain']}' activated by admin")
+        
+        return {"status": "success", "message": "Domain activated successfully"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error activating domain: {e}")
+        raise HTTPException(status_code=500, detail="Failed to activate domain")
+
+
+@api_router.post("/custom-domains/health-check")
+async def health_check_domains(admin_key: str = None):
+    """Admin endpoint: Check all active domains and mark disconnected if DNS fails"""
+    import dns.resolver
+    
+    ADMIN_KEY = os.environ.get('ADMIN_API_KEY', 'trustflow-admin-secret')
+    VERCEL_CNAME_TARGETS = ['cname.vercel-dns.com', 'cname-china.vercel-dns.com']
+    
+    if admin_key != ADMIN_KEY:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    try:
+        # Get all active domains
+        response = supabase.table('custom_domains') \
+            .select('*') \
+            .eq('status', 'active') \
+            .execute()
+        
+        results = []
+        disconnected_count = 0
+        
+        for domain in response.data or []:
+            domain_name = domain['domain']
+            domain_id = domain['id']
+            is_healthy = False
+            
+            try:
+                answers = dns.resolver.resolve(domain_name, 'CNAME')
+                for rdata in answers:
+                    cname = str(rdata.target).rstrip('.')
+                    if cname.lower() in [t.lower() for t in VERCEL_CNAME_TARGETS]:
+                        is_healthy = True
+                        break
+            except Exception:
+                is_healthy = False
+            
+            if not is_healthy:
+                # Mark as disconnected
+                supabase.table('custom_domains') \
+                    .update({
+                        'status': 'disconnected',
+                        'disconnected_at': datetime.now(timezone.utc).isoformat()
+                    }) \
+                    .eq('id', domain_id) \
+                    .execute()
+                disconnected_count += 1
+                logger.warning(f"⚠️ Domain '{domain_name}' marked as DISCONNECTED")
+            
+            results.append({
+                "domain": domain_name,
+                "healthy": is_healthy
+            })
+        
+        return {
+            "status": "success",
+            "checked": len(results),
+            "disconnected": disconnected_count,
+            "results": results
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in health check: {e}")
+        raise HTTPException(status_code=500, detail="Health check failed")
+
+
+@api_router.get("/admin/pending-domains")
+async def get_pending_domains(admin_key: str = None):
+    """Admin endpoint: Get all domains awaiting activation"""
+    ADMIN_KEY = os.environ.get('ADMIN_API_KEY', 'trustflow-admin-secret')
+    
+    if admin_key != ADMIN_KEY:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    try:
+        response = supabase.table('custom_domains') \
+            .select('*, spaces(space_name, slug)') \
+            .eq('status', 'dns_verified') \
+            .order('dns_verified_at', desc=True) \
+            .execute()
+        
+        return {
+            "status": "success",
+            "count": len(response.data or []),
+            "domains": response.data or []
+        }
+    
+    except Exception as e:
+        logger.error(f"Error fetching pending domains: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch pending domains")
 
 
 # Include the router

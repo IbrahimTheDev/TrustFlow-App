@@ -70,8 +70,10 @@ const StylishVideoPlayer = ({ videoUrl, corners = 'rounded-xl' }) => {
 };
 
 // --- 3. MAIN WIDGET CONTENT ---
-const WallOfLoveContent = () => {
-  const { spaceId } = useParams(); 
+const WallOfLoveContent = ({ customSpaceId }) => {
+  const { spaceId: urlSpaceId } = useParams(); 
+  const spaceId = customSpaceId || urlSpaceId;
+  
   const [searchParams] = useSearchParams();
   const outerContainerRef = useRef(null); 
   const carouselConstraintsRef = useRef(null);
@@ -641,9 +643,9 @@ const WallOfLoveContent = () => {
   );
 };
 
-const WallOfLove = () => (
+const WallOfLove = ({ customSpaceId }) => (
   <WidgetErrorBoundary>
-    <WallOfLoveContent />
+    <WallOfLoveContent customSpaceId={customSpaceId} />
   </WidgetErrorBoundary>
 );
 

@@ -15,8 +15,11 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import confetti from 'canvas-confetti';
 
-const SubmitTestimonial = () => {
-  const { slug } = useParams();
+const SubmitTestimonial = ({ customSlug }) => {
+  // Use customSlug prop if provided (for custom domains), otherwise use URL param
+  const { slug: urlSlug } = useParams();
+  const slug = customSlug || urlSlug;
+  
   const [space, setSpace] = useState(null);
   const [formSettings, setFormSettings] = useState(null);
   const [loading, setLoading] = useState(true);
