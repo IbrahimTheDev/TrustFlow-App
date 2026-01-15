@@ -217,6 +217,14 @@
                             runPopupLoop(data.widget_settings, settings); 
                         }
                     }
+                    // Store CTA selector in global scope for analytics module
+                    if (data && data.cta_selector !== undefined) {
+                        window.TF_CTA_SELECTOR = data.cta_selector;
+                    }
+                    // Initialize analytics after fetching CTA selector
+                    if (isFirstLoad && !window.TF_ANALYTICS_INITIALIZED) {
+                        initAnalyticsModule(spaceId, cleanBase);
+                    }
                 })
                 .catch(function(err) { /* Silent Fail */ });
         };
@@ -336,5 +344,189 @@
 
     // --- STARTUP LOGIC ---
     autoStart();
+
+    // =====================================================
+    // --- ANALYTICS TRACKING MODULE (ISOLATED) ---
+    // This module is completely independent and will not
+    // affect any existing iframe/hydration/popup logic.
+    // =====================================================
+
+    /**
+     * Initialize Analytics Module
+     * - Tracks impressions (widget views)
+     * - Tracks conversions (CTA clicks)
+     * @param {string} spaceId - The space ID
+     * @param {string} baseUrl - The API base URL
+     */
+    function initAnalyticsModule(spaceId, baseUrl) {
+        try {
+            // Prevent double initialization
+            if (window.TF_ANALYTICS_INITIALIZED) return;
+            window.TF_ANALYTICS_INITIALIZED = true;
+
+            var trackUrl = baseUrl + '/api/track';
+
+            // --- 1. IMPRESSION TRACKING (Smart Check) ---
+            // Only fire impression if widget/popup is visible on this page.
+            // This prevents tracking on pages like Login/Signup where widget isn't shown.
+            //
+            // DEV NOTE: To enable "Global Page Tracking" for all pages:
+            // Uncomment the next line and comment out the visibility check
+            // trackMetric(trackUrl, spaceId, 'impression', {});
+            
+            function checkAndTrackImpression() {
+                try {
+                    var widgetExists = document.getElementById('trustflow-widget') ||
+                                       document.getElementById('tf-floating-launcher') ||
+                                       document.querySelector('.trustflow-widget-container');
+                    
+                    // Also track if popups are enabled (even without visible widget)
+                    var cfg = getConfig();
+                    var popupsEnabled = cfg && window.TF_POPUPS_INITIALIZED;
+
+                    if (widgetExists || popupsEnabled) {
+                        // Track impression only once per session
+                        var sessionKey = 'tf_impression_' + spaceId;
+                        if (!sessionStorage.getItem(sessionKey)) {
+                            trackMetric(trackUrl, spaceId, 'impression', {
+                                url: window.location.href,
+                                referrer: document.referrer || 'direct'
+                            });
+                            sessionStorage.setItem(sessionKey, '1');
+                        }
+                    }
+                } catch (e) {
+                    // Silent fail - never crash the widget
+                }
+            }
+
+            // Run impression check after a short delay (let widget render)
+            setTimeout(checkAndTrackImpression, 2000);
+
+            // --- 2. CONVERSION TRACKING (Global Click Listener) ---
+            // Uses capture phase (true) to catch clicks before they bubble
+            // This ensures tracking works even in React/SPA apps with re-renders
+            
+            function setupConversionTracking() {
+                try {
+                    document.addEventListener('click', function(event) {
+                        try {
+                            var target = event.target;
+                            if (!target) return;
+
+                            // Walk up the DOM tree to find clicked element or parent
+                            var clickedEl = target.closest ? target.closest('a, button, [role="button"]') : target;
+                            if (!clickedEl) clickedEl = target;
+
+                            // Get CTA selector from API (stored in fetchAndInitPopups)
+                            // Fallback to data attribute if no custom selector
+                            var ctaSelector = window.TF_CTA_SELECTOR || '[data-tf-conversion="true"]';
+                            
+                            // Check if clicked element matches the CTA selector
+                            var isConversion = false;
+                            
+                            try {
+                                // Check if the clicked element matches the selector
+                                if (clickedEl.matches && clickedEl.matches(ctaSelector)) {
+                                    isConversion = true;
+                                }
+                                // Also check parents (in case user clicks inner span/icon)
+                                if (!isConversion && target.closest) {
+                                    var matchingParent = target.closest(ctaSelector);
+                                    if (matchingParent) {
+                                        isConversion = true;
+                                    }
+                                }
+                            } catch (selectorError) {
+                                // Invalid selector - fallback to data attribute only
+                                if (clickedEl.hasAttribute && clickedEl.hasAttribute('data-tf-conversion')) {
+                                    isConversion = true;
+                                }
+                            }
+
+                            if (isConversion) {
+                                // --- NAVIGATION SAFETY FIX ---
+                                // Use sendBeacon with Blob to ensure tracking completes
+                                // even when user is immediately redirected
+                                trackMetric(trackUrl, spaceId, 'conversion', {
+                                    url: window.location.href,
+                                    element: clickedEl.tagName || 'unknown',
+                                    text: (clickedEl.innerText || '').substring(0, 50)
+                                });
+                            }
+                        } catch (clickError) {
+                            // Silent fail
+                        }
+                    }, true); // 'true' = capture phase for better SPA support
+                } catch (e) {
+                    // Silent fail
+                }
+            }
+
+            setupConversionTracking();
+
+            // --- 3. SPA NAVIGATION LOOP ---
+            // Re-check for widget/CTA existence periodically
+            // Handles React route changes without page reload
+            var lastUrl = window.location.href;
+            
+            setInterval(function() {
+                try {
+                    var currentUrl = window.location.href;
+                    if (currentUrl !== lastUrl) {
+                        lastUrl = currentUrl;
+                        // URL changed (SPA navigation) - recheck impression
+                        // Clear session flag to allow new impression on new page
+                        var sessionKey = 'tf_impression_' + spaceId;
+                        sessionStorage.removeItem(sessionKey);
+                        
+                        // Delay to let new page render
+                        setTimeout(checkAndTrackImpression, 1500);
+                    }
+                } catch (e) {
+                    // Silent fail
+                }
+            }, 1000);
+
+        } catch (initError) {
+            // Analytics module failed - widget continues to work normally
+            console.warn('TrustFlow Analytics: Init failed', initError);
+        }
+    }
+
+    /**
+     * Track a metric event
+     * Uses navigator.sendBeacon with Blob for reliable delivery
+     * even when page is navigating away
+     * 
+     * @param {string} url - The tracking endpoint URL
+     * @param {string} spaceId - The space ID
+     * @param {string} eventType - 'impression' or 'conversion'
+     * @param {object} metadata - Additional event data
+     */
+    function trackMetric(url, spaceId, eventType, metadata) {
+        try {
+            var payload = {
+                space_id: spaceId,
+                event_type: eventType,
+                metadata: metadata || {}
+            };
+
+            // Use sendBeacon for reliable delivery during navigation
+            // Blob ensures Content-Type is application/json
+            if (navigator.sendBeacon) {
+                var blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+                navigator.sendBeacon(url, blob);
+            } else {
+                // Fallback for older browsers
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', url, true);
+                xhr.setRequestHeader('Content-Type', 'application/json');
+                xhr.send(JSON.stringify(payload));
+            }
+        } catch (e) {
+            // Silent fail - tracking should never break the widget
+        }
+    }
 
 })();

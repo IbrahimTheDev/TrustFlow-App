@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { 
-  ArrowLeft, Copy, ExternalLink, Inbox, Edit, Code, Settings, Loader2, Share2 
+  ArrowLeft, Copy, ExternalLink, Inbox, Edit, Code, Settings, Loader2, Share2, BarChart3 
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Toaster } from '@/components/ui/sonner';
@@ -19,6 +19,7 @@ import EditFormTab from './components/EditFormTab';
 import ShareTab from './components/ShareTab';
 import WidgetTab from './components/WidgetTab';
 import SettingsTab from './components/SettingsTab';
+import CTADashboardTab from './components/CTADashboardTab';
 
 const SpaceOverview = () => {
   const { spaceId } = useParams();
@@ -317,6 +318,11 @@ const SpaceOverview = () => {
                 <Inbox className="w-4 h-4" />
                 Inbox <Badge variant="secondary" className="ml-1 bg-violet-100 text-violet-700">{testimonials.length}</Badge>
               </TabsTrigger>
+
+              <TabsTrigger value="roi-dashboard" className="flex items-center gap-2 flex-shrink-0">
+                <BarChart3 className="w-4 h-4" />
+                ROI Dashboard
+              </TabsTrigger>
               
               <TabsTrigger value="edit-form" className="flex items-center gap-2 flex-shrink-0">
                 <Edit className="w-4 h-4" />
@@ -345,6 +351,10 @@ const SpaceOverview = () => {
           <div className="mt-4 md:mt-8">
             <TabsContent value="inbox" className="mt-0">
               <InboxTab testimonials={testimonials} toggleLike={toggleLike} deleteTestimonial={deleteTestimonial} setSelectedVideo={setSelectedVideo} copySubmitLink={copySubmitLink} />
+            </TabsContent>
+
+            <TabsContent value="roi-dashboard" className="mt-0">
+              <CTADashboardTab spaceId={spaceId} />
             </TabsContent>
 
             <TabsContent value="edit-form" className="mt-0">

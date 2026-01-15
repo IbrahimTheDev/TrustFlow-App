@@ -1,4 +1,5 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, Request
+from fastapi.responses import Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from supabase import create_client, Client
@@ -8,7 +9,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -76,6 +77,15 @@ class CustomDomainResponse(BaseModel):
     dns_verified_at: Optional[str] = None
     created_at: str
     updated_at: str
+
+# --- Analytics Models ---
+class TrackEventRequest(BaseModel):
+    space_id: str
+    event_type: str  # 'impression' or 'conversion'
+    metadata: Optional[Dict[str, Any]] = {}
+
+class CTASelectorUpdate(BaseModel):
+    cta_selector: Optional[str] = None
 
 # --- Routes ---
 
@@ -199,15 +209,27 @@ async def get_space_public_data(space_id: str):
         if settings_res.data and len(settings_res.data) > 0:
             widget_settings = settings_res.data[0]['settings']
 
+        # 3. CTA Selector for Analytics
+        cta_res = supabase.table('spaces') \
+            .select('cta_selector') \
+            .eq('id', space_id) \
+            .single() \
+            .execute()
+        
+        cta_selector = None
+        if cta_res.data:
+            cta_selector = cta_res.data.get('cta_selector')
+
         return {
             "status": "success",
             "testimonials": testimonials,
-            "widget_settings": widget_settings
+            "widget_settings": widget_settings,
+            "cta_selector": cta_selector
         }
 
     except Exception as e:
         logger.error(f"Error fetching public data for {space_id}: {e}")
-        return {"status": "error", "testimonials": [], "widget_settings": {}}
+        return {"status": "error", "testimonials": [], "widget_settings": {}, "cta_selector": None}
 
 @api_router.get("/setup-db")
 async def setup_database():
@@ -228,6 +250,152 @@ async def setup_database():
             "message": str(e),
             "hint": "Please create tables in Supabase Dashboard"
         }
+
+
+# --- ANALYTICS & TRACKING ROUTES ---
+
+@api_router.get("/analytics/{space_id}")
+async def get_analytics(space_id: str, range: str = "7d"):
+    """Fetch analytics data for a space with date range filtering"""
+    try:
+        # Calculate date range
+        now = datetime.now(timezone.utc)
+        if range == "7d":
+            start_date = now - timedelta(days=7)
+        elif range == "30d":
+            start_date = now - timedelta(days=30)
+        else:  # 'all' or any other value
+            start_date = None
+        
+        # Build base query
+        query = supabase.table('analytics_events').select('*').eq('space_id', space_id)
+        
+        if start_date:
+            query = query.gte('created_at', start_date.isoformat())
+        
+        response = query.order('created_at', desc=True).execute()
+        events = response.data or []
+        
+        # Aggregate counts
+        impressions = sum(1 for e in events if e['event_type'] == 'impression')
+        conversions = sum(1 for e in events if e['event_type'] == 'conversion')
+        ctr = round((conversions / impressions * 100), 2) if impressions > 0 else 0
+        
+        # Group by date for chart data
+        date_groups = {}
+        for event in events:
+            # Parse date and extract just the date part
+            event_date = event['created_at'][:10]  # YYYY-MM-DD
+            if event_date not in date_groups:
+                date_groups[event_date] = {'date': event_date, 'impressions': 0, 'conversions': 0}
+            if event['event_type'] == 'impression':
+                date_groups[event_date]['impressions'] += 1
+            else:
+                date_groups[event_date]['conversions'] += 1
+        
+        # Convert to sorted list
+        chart_data = sorted(date_groups.values(), key=lambda x: x['date'])
+        
+        return {
+            "status": "success",
+            "summary": {
+                "impressions": impressions,
+                "conversions": conversions,
+                "ctr": ctr
+            },
+            "chart_data": chart_data
+        }
+    
+    except Exception as e:
+        logger.error(f"Error fetching analytics for {space_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch analytics")
+
+
+@api_router.put("/spaces/{space_id}/cta")
+async def update_cta_selector(space_id: str, data: CTASelectorUpdate):
+    """Update the CTA selector for conversion tracking"""
+    try:
+        response = supabase.table('spaces') \
+            .update({'cta_selector': data.cta_selector}) \
+            .eq('id', space_id) \
+            .execute()
+        
+        if response.data:
+            return {"status": "success", "message": "CTA selector updated"}
+        
+        raise HTTPException(status_code=404, detail="Space not found")
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating CTA selector: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update CTA selector")
+
+
+@api_router.get("/spaces/{space_id}/cta")
+async def get_cta_selector(space_id: str):
+    """Get the CTA selector for a space"""
+    try:
+        response = supabase.table('spaces') \
+            .select('cta_selector') \
+            .eq('id', space_id) \
+            .single() \
+            .execute()
+        
+        if response.data:
+            return {"status": "success", "cta_selector": response.data.get('cta_selector')}
+        
+        raise HTTPException(status_code=404, detail="Space not found")
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching CTA selector: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch CTA selector")
+
+
+@api_router.post("/track")
+async def track_event(request: Request):
+    """
+    Track impression/conversion events from embed script.
+    Handles both JSON and sendBeacon requests.
+    Uses credentials: 'omit' friendly CORS.
+    """
+    try:
+        # Parse body (works for both fetch and sendBeacon with Blob)
+        body = await request.json()
+        
+        space_id = body.get('space_id')
+        event_type = body.get('event_type')
+        metadata = body.get('metadata', {})
+        
+        # Validate
+        if not space_id or not event_type:
+            raise HTTPException(status_code=400, detail="Missing space_id or event_type")
+        
+        if event_type not in ['impression', 'conversion']:
+            raise HTTPException(status_code=400, detail="Invalid event_type. Must be 'impression' or 'conversion'")
+        
+        # Insert event
+        event_data = {
+            'space_id': space_id,
+            'event_type': event_type,
+            'metadata': metadata,
+            'created_at': datetime.now(timezone.utc).isoformat()
+        }
+        
+        response = supabase.table('analytics_events').insert(event_data).execute()
+        
+        if response.data:
+            return {"status": "success", "message": f"{event_type} tracked"}
+        
+        raise HTTPException(status_code=500, detail="Failed to insert event")
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error tracking event: {e}")
+        raise HTTPException(status_code=500, detail="Tracking failed")
 
 
 # --- CUSTOM DOMAIN ROUTES (Pro Feature) ---
