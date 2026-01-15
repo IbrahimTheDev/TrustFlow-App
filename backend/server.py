@@ -817,6 +817,277 @@ async def get_pending_domains(admin_key: str = None):
         raise HTTPException(status_code=500, detail="Failed to fetch pending domains")
 
 
+# --- WEBHOOK TEST ENDPOINT ---
+
+class WebhookTestRequest(BaseModel):
+    webhook_url: str
+    payload: Dict[str, Any]
+
+
+# --- SMART WEBHOOK PAYLOAD FORMATTERS ---
+
+def detect_webhook_platform(url: str) -> str:
+    """Detect the platform from webhook URL"""
+    if not url:
+        return 'generic'
+    lower_url = url.lower()
+    if 'hooks.slack.com' in lower_url:
+        return 'slack'
+    if 'discord.com/api/webhooks' in lower_url or 'discordapp.com/api/webhooks' in lower_url:
+        return 'discord'
+    return 'generic'
+
+
+def generate_star_rating(rating: Optional[int]) -> str:
+    """Generate star rating string"""
+    if not rating or rating < 1:
+        return '☆☆☆☆☆'
+    full_stars = min(int(rating), 5)
+    return '⭐' * full_stars + '☆' * (5 - full_stars)
+
+
+def format_slack_payload(payload: Dict[str, Any], is_test: bool = False) -> Dict[str, Any]:
+    """Format payload for Slack using Block Kit"""
+    data = payload.get('data', {})
+    stars = generate_star_rating(data.get('rating'))
+    content = data.get('content', 'No content provided')
+    content_preview = content[:200] + ('...' if len(content) > 200 else '')
+    name = data.get('respondent_name', 'Anonymous')
+    
+    header_text = "🧪 TrustFlow Test Ping!" if is_test else "🎉 New Testimonial Received!"
+    
+    slack_payload = {
+        "text": f"{header_text}\nFrom: {name}\nRating: {stars}\n\"{content_preview}\"",
+        "blocks": [
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": header_text,
+                    "emoji": True
+                }
+            },
+            {
+                "type": "section",
+                "fields": [
+                    {
+                        "type": "mrkdwn",
+                        "text": f"*From:*\n{name}"
+                    },
+                    {
+                        "type": "mrkdwn",
+                        "text": f"*Rating:*\n{stars}"
+                    }
+                ]
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*{'Test Message' if is_test else 'Testimonial'}:*\n> _\"{content_preview}\"_"
+                }
+            }
+        ]
+    }
+    
+    if is_test:
+        slack_payload["blocks"].append({
+            "type": "context",
+            "elements": [
+                {
+                    "type": "mrkdwn",
+                    "text": "✅ *Connection verified!* Your TrustFlow webhook is working perfectly."
+                }
+            ]
+        })
+    
+    return slack_payload
+
+
+def format_discord_payload(payload: Dict[str, Any], is_test: bool = False) -> Dict[str, Any]:
+    """Format payload for Discord using Embeds"""
+    data = payload.get('data', {})
+    stars = generate_star_rating(data.get('rating'))
+    content = data.get('content', 'No content provided')
+    content_preview = content[:300] + ('...' if len(content) > 300 else '')
+    name = data.get('respondent_name', 'Anonymous')
+    email = data.get('respondent_email', 'Not provided')
+    
+    title = "🧪 TrustFlow Test Ping!" if is_test else f"Testimonial from {name}"
+    color = 0x10B981 if is_test else 0x8B5CF6  # Green for test, Violet for real
+    
+    return {
+        "content": "✅ **Connection Test Successful!**" if is_test else "🎉 **New Testimonial Received!**",
+        "embeds": [{
+            "title": title,
+            "description": f"> _\"{content_preview}\"_",
+            "color": color,
+            "fields": [
+                {"name": "⭐ Rating", "value": stars, "inline": True},
+                {"name": "📝 Type", "value": data.get('type', 'text'), "inline": True},
+                {"name": "📧 Email", "value": email, "inline": True}
+            ],
+            "footer": {"text": "TrustFlow Webhook" + (" - Test Mode" if is_test else "")},
+            "timestamp": data.get('created_at', datetime.now(timezone.utc).isoformat())
+        }]
+    }
+
+
+def format_smart_payload(url: str, payload: Dict[str, Any], is_test: bool = False) -> Dict[str, Any]:
+    """Automatically detect platform and format payload accordingly"""
+    platform = detect_webhook_platform(url)
+    
+    if platform == 'slack':
+        return format_slack_payload(payload, is_test)
+    elif platform == 'discord':
+        return format_discord_payload(payload, is_test)
+    else:
+        # Generic - return original payload
+        return payload
+
+@api_router.post("/webhooks/test")
+async def test_webhook(request: WebhookTestRequest):
+    """
+    Test a webhook URL by sending a test payload.
+    This acts as a proxy to avoid CORS issues when testing from the frontend.
+    """
+    import httpx
+    
+    # Security: Validate the webhook URL
+    url = request.webhook_url.strip()
+    
+    # Must be HTTPS
+    if not url.startswith('https://'):
+        return {
+            "success": False,
+            "error": "Only HTTPS URLs are allowed",
+            "status_code": None
+        }
+    
+    # Block localhost and private IPs
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        hostname = parsed.hostname.lower() if parsed.hostname else ''
+        
+        # Block localhost variations
+        blocked_hosts = ['localhost', '127.0.0.1', '0.0.0.0', '::1', '[::1]']
+        if hostname in blocked_hosts or hostname.startswith('localhost'):
+            return {
+                "success": False,
+                "error": "Localhost URLs are not allowed",
+                "status_code": None
+            }
+        
+        # Block private IP ranges (basic check)
+        import re
+        private_ip_patterns = [
+            r'^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$',          # 10.x.x.x
+            r'^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$',  # 172.16-31.x.x
+            r'^192\.168\.\d{1,3}\.\d{1,3}$',             # 192.168.x.x
+            r'^169\.254\.\d{1,3}\.\d{1,3}$',             # Link-local
+        ]
+        
+        for pattern in private_ip_patterns:
+            if re.match(pattern, hostname):
+                return {
+                    "success": False,
+                    "error": "Private IP addresses are not allowed",
+                    "status_code": None
+                }
+                
+    except Exception as e:
+        logger.error(f"URL parsing error: {e}")
+        return {
+            "success": False,
+            "error": "Invalid URL format",
+            "status_code": None
+        }
+    
+    # Send the test webhook
+    try:
+        # Detect platform and format payload smartly
+        platform = detect_webhook_platform(url)
+        smart_payload = format_smart_payload(url, request.payload, is_test=True)
+        
+        start_time = datetime.now(timezone.utc)
+        
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.post(
+                url,
+                json=smart_payload,
+                headers={
+                    "Content-Type": "application/json",
+                    "User-Agent": "TrustFlow-Webhook-Test/1.0",
+                    "X-TrustFlow-Event": "testimonial.test",
+                    "X-TrustFlow-Delivery": str(uuid.uuid4()),
+                    "X-TrustFlow-Platform": platform,
+                }
+            )
+            
+            end_time = datetime.now(timezone.utc)
+            latency_ms = int((end_time - start_time).total_seconds() * 1000)
+            
+            # 2xx status codes are considered success
+            is_success = 200 <= response.status_code < 300
+            
+            # Try to get response body for debugging
+            try:
+                response_body = response.text[:500] if response.text else None
+            except:
+                response_body = None
+            
+            return {
+                "success": is_success,
+                "status_code": response.status_code,
+                "latency_ms": latency_ms,
+                "platform": platform,
+                "timestamp": end_time.isoformat(),
+                "request_payload": smart_payload,
+                "response_body": response_body,
+                "error": None if is_success else f"Received status {response.status_code}"
+            }
+            
+    except httpx.TimeoutException:
+        return {
+            "success": False,
+            "error": "Request timed out (5 second limit)",
+            "error_type": "timeout",
+            "status_code": 408,
+            "latency_ms": 5000,
+            "platform": detect_webhook_platform(url),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "request_payload": None,
+            "response_body": None
+        }
+    except httpx.RequestError as e:
+        logger.error(f"Webhook test request error: {e}")
+        return {
+            "success": False,
+            "error": f"Connection error: {str(e)}",
+            "error_type": "connection",
+            "status_code": None,
+            "latency_ms": None,
+            "platform": detect_webhook_platform(url),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "request_payload": None,
+            "response_body": None
+        }
+    except Exception as e:
+        logger.error(f"Webhook test error: {e}")
+        return {
+            "success": False,
+            "error": "An unexpected error occurred",
+            "error_type": "unknown",
+            "status_code": None,
+            "latency_ms": None,
+            "platform": detect_webhook_platform(url),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "request_payload": None,
+            "response_body": None
+        }
+
+
 # Include the router
 app.include_router(api_router)
 
