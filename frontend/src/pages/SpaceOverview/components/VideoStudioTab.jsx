@@ -98,6 +98,11 @@ const VideoStudioTab = ({
 
     // Cache busting aur absolute path Codespace ke liye
     const baseURL = `${window.location.origin}/ffmpeg`;
+    await ffmpeg.load({
+      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+      workerURL: await toBlobURL(`${baseURL}/ffmpeg-core.worker.js`, 'text/javascript'),
+    });
     const ts = `?t=${Date.now()}`;
 
     console.log('[FFmpeg] Attempting to load from local public folder...');
