@@ -41,18 +41,26 @@ const smoothScrollStyles = `
   }
 `; 
 
-// --- 1. ERROR BOUNDARY ---
+// --- 1. ERROR BOUNDARY (Fixed to show Error) ---
 class WidgetErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, error: null };
   }
-  static getDerivedStateFromError(error) { return { hasError: true }; }
+  static getDerivedStateFromError(error) { return { hasError: true, error }; }
   componentDidCatch(error, errorInfo) {
-    console.error("TrustFlow Widget Error:", error);
+    console.error("TrustFlow Widget Error:", error, errorInfo);
   }
   render() {
-    if (this.state.hasError) return null; 
+    if (this.state.hasError) {
+        // Fallback UI showing the actual error
+        return (
+            <div className="p-4 text-center border border-red-200 bg-red-50 rounded-lg">
+                <p className="text-red-600 font-bold text-sm">Widget Error</p>
+                <p className="text-xs text-red-500 mt-1">{this.state.error?.message || "Unknown error"}</p>
+            </div>
+        );
+    }
     return this.props.children; 
   }
 }
@@ -185,6 +193,7 @@ const WallOfLoveContent = ({ customSpaceId }) => {
 
   // --- 3. Font Loader ---
   useEffect(() => {
+    // FIX: Added filter(Boolean) to avoid crash if fonts are undefined
     const fontsToLoad = [settings.headingFont, settings.subheadingFont].filter(Boolean);
     const uniqueFonts = [...new Set(fontsToLoad)];
     uniqueFonts.forEach(font => {
@@ -203,37 +212,50 @@ const WallOfLoveContent = ({ customSpaceId }) => {
 
   // --- 4. Data Fetching ---
   useEffect(() => {
+    console.log("DEBUG: WallOfLove mounted. SpaceID:", spaceId);
     if (spaceId) {
-        Promise.all([fetchTestimonials(), fetchSettings()]).finally(() => setLoading(false));
+        Promise.all([fetchTestimonials(), fetchSettings()])
+            .then(() => console.log("DEBUG: Fetch complete"))
+            .catch(err => console.error("DEBUG: Fetch error", err))
+            .finally(() => setLoading(false));
     }
   }, [spaceId]);
 
   const fetchSettings = async () => {
     try {
-        const { data } = await supabase
+        const { data, error } = await supabase
             .from('widget_configurations')
             .select('settings')
             .eq('space_id', spaceId)
             .single();
+        
+        if (error) console.error("DEBUG: Settings fetch error:", error);
+        
         if (data?.settings) {
+            console.log("DEBUG: Settings loaded:", data.settings);
             setSettings(prev => ({ ...prev, ...data.settings }));
         }
     } catch (e) { console.warn("Using default settings."); }
   };
 
   const fetchTestimonials = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('testimonials')
       .select('*')
       .eq('space_id', spaceId)
       .eq('is_liked', true) 
       .order('created_at', { ascending: false });
+    
+    if (error) console.error("DEBUG: Testimonials error:", error);
+    else console.log("DEBUG: Testimonials loaded:", data?.length);
+
     setTestimonials(data || []);
   };
 
   // --- 5. Logic: Shuffle & Loop ---
+  // FIX: Added `(testimonials || [])` to prevent crash if data is null
   const displayedTestimonials = useMemo(() => {
-    let result = [...testimonials];
+    let result = [...(testimonials || [])];
     if (settings.shuffle) result = result.sort(() => Math.random() - 0.5);
     return result.slice(0, settings.maxCount || 12);
   }, [testimonials, settings.shuffle, settings.maxCount]);
@@ -277,13 +299,13 @@ const WallOfLoveContent = ({ customSpaceId }) => {
     
     if (expandedElement) {
         const rect = expandedElement.getBoundingClientRect();
-        // Calculate needed bottom space relative to viewport/document
         const neededHeight = rect.bottom + 60; 
         if (neededHeight > height) {
              height = neededHeight;
         }
     }
 
+    console.log("DEBUG: Sending resize message. Height:", height);
     window.parent.postMessage({ type: 'trustflow-resize', height }, '*');
 
     if (settings.layout === 'carousel') {
@@ -302,10 +324,11 @@ const WallOfLoveContent = ({ customSpaceId }) => {
   };
 
   useEffect(() => {
-    if (loading || !outerContainerRef.current) return;
+    // FIX: Removed 'loading' check so resize can trigger on initial loader too
+    if (!outerContainerRef.current) return;
     const observer = new ResizeObserver(handleResize);
     observer.observe(outerContainerRef.current);
-    handleResize();
+    handleResize(); // Trigger immediately
     window.addEventListener('resize', handleResize);
     return () => { observer.disconnect(); window.removeEventListener('resize', handleResize); };
   }, [testimonials, settings.layout, loading, settings.theme]);
@@ -382,18 +405,14 @@ const WallOfLoveContent = ({ customSpaceId }) => {
 
   const getCardStyles = (isOverlay = false) => {
     const { cardTheme, layout, corners, shadow, border, hoverEffect, carouselSameSize } = settings;
-    // FIX NO 2: Removed generic 'transition-all' from base string
     let classes = 'p-5 md:p-6 flex flex-col ';
     
-    // Condition to STOP floating/sliding on overlay
     if (!isOverlay) {
         classes += 'transition-all duration-300 ';
     } else {
-        // Overlay only transitions non-layout properties
         classes += 'transition-[box-shadow,transform,background-color,border-color,opacity] duration-300 ';
     }
     
-    // --- Height Logic ---
     if (isOverlay) {
         classes += 'h-auto '; 
     } else if (layout === 'masonry') {
@@ -403,12 +422,10 @@ const WallOfLoveContent = ({ customSpaceId }) => {
         else classes += 'h-auto ';
     }
     
-    // Radius
     if (corners === 'sharp') classes += 'rounded-none ';
     else if (corners === 'round') classes += 'rounded-3xl ';
     else classes += 'rounded-xl ';
 
-    // Shadow
     if (isOverlay) {
         classes += 'shadow-2xl ring-1 ring-black/5 '; 
     } else {
@@ -418,13 +435,10 @@ const WallOfLoveContent = ({ customSpaceId }) => {
         else classes += 'shadow-md ';
     }
 
-    // Hover (Visuals apply to both now for consistency)
     if (hoverEffect === 'lift') classes += 'hover:-translate-y-1 hover:shadow-lg ';
     else if (hoverEffect === 'scale') classes += 'hover:scale-[1.01] hover:shadow-lg ';
     else if (hoverEffect === 'glow') classes += 'hover:shadow-violet-500/20 hover:border-violet-300 ';
     
-
-    // Theme
     if (cardTheme === 'dark') classes += 'bg-slate-900 text-slate-100 ' + (border ? 'border border-slate-800 ' : 'border-0 ');
     else classes += 'bg-white text-slate-800 ' + (border ? 'border border-slate-100 ' : 'border-0 ');
 
@@ -437,10 +451,8 @@ const WallOfLoveContent = ({ customSpaceId }) => {
     return classes;
   };
 
-  // Interaction Handlers (Now controls Pause + Expand)
   const handleMouseEnter = (e, index, isOverflowing) => {
     setIsPaused(true); // PAUSE
-    // STRICT CHECK: Only expand if strict overflow was detected
     if (!isOverflowing) return; 
     
     if (window.innerWidth >= 640) {
@@ -456,13 +468,13 @@ const WallOfLoveContent = ({ customSpaceId }) => {
 
   const handleMobileClick = (e, index, isOverflowing) => {
     setIsPaused(true); // PAUSE on Touch
-    if (!isOverflowing) return; // Strict check
+    if (!isOverflowing) return; 
     
     const isMobile = window.innerWidth < 640;
     if (isMobile) {
         if (expandedId === index) {
             setExpandedId(null);
-            setIsPaused(false); // Resume if closing
+            setIsPaused(false); 
         } else {
             const rect = e.currentTarget.getBoundingClientRect();
             setExpandedRect(rect);
@@ -477,8 +489,6 @@ const WallOfLoveContent = ({ customSpaceId }) => {
     setIsPaused(false); 
   };
   
-  // Calculate smooth scroll duration based on content width and speed
-  // MOVED BEFORE EARLY RETURNS to comply with Rules of Hooks
   const smoothScrollDuration = useMemo(() => {
     try {
       const totalWidth = displayedTestimonials.length * (CARD_WIDTH + GAP);
@@ -491,7 +501,16 @@ const WallOfLoveContent = ({ customSpaceId }) => {
   }, [displayedTestimonials.length, settings.smoothScrollSpeed]);
 
   // --- RENDER ---
-  if (loading) return <div className="min-h-[200px] flex items-center justify-center bg-transparent"><Loader2 className="w-6 h-6 animate-spin text-gray-400"/></div>;
+  
+  // FIX: Added ref={outerContainerRef} to the Loader div
+  // This ensures embed.js detects content height > 0 during loading
+  if (loading) return (
+    <div ref={outerContainerRef} className="min-h-[100px] flex items-center justify-center bg-transparent">
+        <Loader2 className="w-6 h-6 animate-spin text-gray-400"/>
+    </div>
+  );
+
+  // FIX: Added ref={outerContainerRef} to the Empty State
   if (testimonials.length === 0) return <div ref={outerContainerRef} className="p-8 text-center text-gray-500">No testimonials yet</div>;
 
   const isCarousel = settings.layout === 'carousel';
@@ -554,11 +573,11 @@ const WallOfLoveContent = ({ customSpaceId }) => {
                 </div>
             </div>
             
-            {/* Powered by TrustFlow Badge */}
+            {/* TrustFlow Branding - Top Right aligned with rating stars */}
             {settings.showBranding !== false && (
-                <div className="absolute bottom-2 right-2">
-                    <span className={`text-[8px] px-1.5 py-0.5 rounded ${settings.cardTheme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
-                        ⚡ TrustFlow
+                <div className="absolute top-2 right-2">
+                    <span className={`text-[8px] px-1.5 py-0.5 rounded inline-flex items-center gap-1 ${settings.cardTheme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
+                        <Star className="w-2.5 h-2.5 fill-violet-500 text-violet-500" /> TrustFlow
                     </span>
                 </div>
             )}
@@ -678,7 +697,7 @@ const WallOfLoveContent = ({ customSpaceId }) => {
                     <motion.div
                       key={`${testimonial.id}-${i}`}
                       custom={i}
-                      layoutId={`card-${i}`} // Sync ID with overlay
+                      layoutId={`card-${i}`} 
                       initial={shouldAnimate ? "hidden" : "visible"}
                       whileInView="visible"
                       viewport={{ once: true, margin: "-10%" }} 

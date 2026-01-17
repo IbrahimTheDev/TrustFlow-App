@@ -201,7 +201,7 @@
     }
 
     function fetchAndInitPopups(spaceId, baseUrl, settings) {
-        var cleanBase = 'https://trust-flow-app.vercel.app'; // Kept hardcoded as requested
+        var cleanBase = 'https://refactored-barnacle-q7j55jp956wvh9j9r-8000.app.github.dev'; // Kept hardcoded as requested
         var apiUrl = cleanBase + '/api/spaces/' + spaceId + '/public-data'; 
         
         var fetchData = function(isFirstLoad) {

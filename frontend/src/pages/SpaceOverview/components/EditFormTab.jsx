@@ -506,13 +506,25 @@ const EditFormTab = ({
                                   <p className={`mb-6 ${themeClasses.textMuted}`}>
                                     {formSettings.thank_you_message || 'Your testimonial has been submitted successfully.'}
                                   </p>
+                                  {/* Promo/Redirect Section - Shows custom link if set, else default */}
                                   <div className="p-4 bg-violet-50 dark:bg-violet-900/20 rounded-lg">
-                                    <p className="text-sm text-slate-700 dark:text-slate-300">
-                                      Want to collect testimonials like this?
-                                    </p>
-                                    <span className="text-violet-600 font-medium hover:underline cursor-pointer">
-                                      Create your own Wall of Love →
-                                    </span>
+                                    {formSettings.extra_settings?.thank_you_url ? (
+                                      /* Custom Thank You Redirect - PRO Feature */
+                                      <span className="text-violet-600 font-medium hover:underline cursor-pointer inline-flex items-center gap-1">
+                                        {formSettings.extra_settings?.thank_you_link_text || 'Continue'}
+                                        <ExternalLink className="w-3.5 h-3.5" />
+                                      </span>
+                                    ) : (
+                                      /* Default TrustFlow Promo */
+                                      <>
+                                        <p className="text-sm text-slate-700 dark:text-slate-300">
+                                          Want to collect testimonials like this?
+                                        </p>
+                                        <span className="text-violet-600 font-medium hover:underline cursor-pointer">
+                                          Create your own Wall of Love →
+                                        </span>
+                                      </>
+                                    )}
                                   </div>
                                   <div className="mt-4">
                                     {/* USE restartPreview HERE TO AVOID RESETTING THEME */}

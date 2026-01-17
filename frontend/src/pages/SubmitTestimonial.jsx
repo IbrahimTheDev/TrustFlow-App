@@ -825,23 +825,26 @@ const SubmitTestimonial = ({ customSlug }) => {
                   <h2 className={`text-2xl font-bold mb-2 ${themeClasses.textHeader}`}>{formSettings.thank_you_title}</h2>
                   <p className={`mb-6 ${themeClasses.textMuted}`}>{formSettings.thank_you_message}</p>
                   
-                  {/* Custom Thank You Redirect Button */}
-                  {formSettings.extra_settings?.thank_you_url && (
-                    <a 
-                      href={formSettings.extra_settings.thank_you_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`inline-flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all mb-4 ${getButtonClass()}`}
-                      style={getButtonStyle()}
-                    >
-                      {formSettings.extra_settings?.thank_you_link_text || 'Continue'}
-                      <ExternalLink className="w-4 h-4" />
-                    </a>
-                  )}
-                  
+                  {/* Promo/Redirect Section - Custom link replaces default if set */}
                   <div className="p-4 bg-violet-50 dark:bg-violet-900/20 rounded-lg">
-                    <p className="text-sm text-slate-700 dark:text-slate-300">Want to collect testimonials like this?</p>
-                    <a href="/" target="_blank" rel="noopener noreferrer" className="text-violet-600 font-medium hover:underline">Create your own Wall of Love →</a>
+                    {formSettings.extra_settings?.thank_you_url ? (
+                      /* Custom Thank You Redirect - PRO Feature */
+                      <a 
+                        href={formSettings.extra_settings.thank_you_url}
+                        target="_blank"
+                        rel="noopener noreferrer" 
+                        className="text-violet-600 font-medium hover:underline inline-flex items-center gap-1"
+                      >
+                        {formSettings.extra_settings?.thank_you_link_text || 'Continue'}
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    ) : (
+                      /* Default TrustFlow Promo */
+                      <>
+                        <p className="text-sm text-slate-700 dark:text-slate-300">Want to collect testimonials like this?</p>
+                        <a href="/" target="_blank" rel="noopener noreferrer" className="text-violet-600 font-medium hover:underline">Create your own Wall of Love →</a>
+                      </>
+                    )}
                   </div>
                 </CardContent>
               </Card>

@@ -163,7 +163,7 @@ const Landing = () => {
 
       {/* How it Works */}
       <section className="container mx-auto px-4 py-20">
-       <div id="trustflow-widget"> </div>
+       <div id="trustflow-widget"></div>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}

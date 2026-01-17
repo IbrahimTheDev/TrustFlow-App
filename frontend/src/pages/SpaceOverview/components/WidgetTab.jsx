@@ -607,9 +607,9 @@ const WidgetTab = ({
                                                 </div>
                                             </div>
                                             {widgetSettings.showBranding !== false && (
-                                                <div className="absolute bottom-2 right-2">
-                                                    <span className={`text-[8px] px-1.5 py-0.5 rounded ${widgetSettings.cardTheme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
-                                                        ⚡ TrustFlow
+                                                <div className="absolute top-2 right-2">
+                                                    <span className={`text-[8px] px-1.5 py-0.5 rounded inline-flex items-center gap-1 ${widgetSettings.cardTheme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
+                                                        <Star className="w-2.5 h-2.5 fill-violet-500 text-violet-500" /> TrustFlow
                                                     </span>
                                                 </div>
                                             )}
@@ -646,9 +646,9 @@ const WidgetTab = ({
                                                 </div>
                                             </div>
                                             {widgetSettings.showBranding !== false && (
-                                                <div className="absolute bottom-2 right-2">
-                                                    <span className={`text-[8px] px-1.5 py-0.5 rounded ${widgetSettings.cardTheme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
-                                                        ⚡ TrustFlow
+                                                <div className="absolute top-2 right-2">
+                                                    <span className={`text-[8px] px-1.5 py-0.5 rounded inline-flex items-center gap-1 ${widgetSettings.cardTheme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
+                                                        <Star className="w-2.5 h-2.5 fill-violet-500 text-violet-500" /> TrustFlow
                                                     </span>
                                                 </div>
                                             )}
@@ -663,8 +663,20 @@ const WidgetTab = ({
                                     ? `flex gap-6 py-4 px-2 ${widgetSettings.carouselSameSize ? 'items-stretch' : 'items-center'}` 
                                     : ''
                                 } 
-                                ${widgetSettings.layout === 'grid' ? 'grid md:grid-cols-2 lg:grid-cols-3 gap-6' : ''}
-                                ${widgetSettings.layout === 'masonry' ? 'columns-1 md:columns-2 lg:columns-3 gap-6 space-y-6' : ''}
+                                ${widgetSettings.layout === 'grid' 
+                                    ? (deviceMode === 'mobile' 
+                                        ? 'flex flex-col gap-4' 
+                                        : deviceMode === 'tablet' 
+                                            ? 'grid grid-cols-2 gap-4' 
+                                            : 'grid md:grid-cols-2 lg:grid-cols-3 gap-6') 
+                                    : ''}
+                                ${widgetSettings.layout === 'masonry' 
+                                    ? (deviceMode === 'mobile' 
+                                        ? 'flex flex-col gap-4' 
+                                        : deviceMode === 'tablet' 
+                                            ? 'columns-2 gap-4' 
+                                            : 'columns-1 md:columns-2 lg:columns-3 gap-6 space-y-6') 
+                                    : ''}
                                 ${widgetSettings.layout === 'list' ? 'max-w-2xl mx-auto flex flex-col gap-4' : ''}
                                 `}
                                 style={isCarousel ? { 
@@ -733,11 +745,11 @@ const WidgetTab = ({
                                                     </div>
                                                 </div>
                                                 
-                                                {/* Powered by TrustFlow Badge */}
+                                                {/* Powered by TrustFlow Badge - Top Right */}
                                                 {widgetSettings.showBranding !== false && (
-                                                    <div className="absolute bottom-2 right-2">
-                                                        <span className={`text-[8px] px-1.5 py-0.5 rounded ${widgetSettings.cardTheme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
-                                                            ⚡ TrustFlow
+                                                    <div className="absolute top-2 right-2">
+                                                        <span className={`text-[8px] px-1.5 py-0.5 rounded inline-flex items-center gap-1 ${widgetSettings.cardTheme === 'dark' ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
+                                                            <Star className="w-2.5 h-2.5 fill-violet-500 text-violet-500" /> TrustFlow
                                                         </span>
                                                     </div>
                                                 )}
@@ -748,6 +760,25 @@ const WidgetTab = ({
                             </motion.div>
                             )}
                         </div>
+                        
+                        {/* See More Button Preview */}
+                        {widgetSettings.seeMoreButtonText && (
+                            <div className="flex justify-center mt-6">
+                                <a 
+                                    href={widgetSettings.seeMoreButtonLink || '#'} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className={`inline-flex items-center gap-2 px-6 py-3 rounded-xl font-medium shadow-lg hover:shadow-xl transition-all ${
+                                        widgetSettings.cardTheme === 'dark' 
+                                            ? 'bg-violet-600 hover:bg-violet-500 text-white' 
+                                            : 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white'
+                                    }`}
+                                >
+                                    {widgetSettings.seeMoreButtonText}
+                                    <ExternalLink className="w-4 h-4" />
+                                </a>
+                            </div>
+                        )}
                         </>
                     )}
                 </div>
@@ -1433,9 +1464,14 @@ const WidgetTab = ({
 
           <Separator className="bg-slate-100" />
 
-          {/* 7. See More Button - NEW */}
+          {/* 7. See More Button - PRO Feature */}
           <div className="space-y-4">
-             <SectionHeader icon={ExternalLink} title="See More Button" />
+             <div className="flex items-center justify-between mb-2">
+                <SectionHeader icon={ExternalLink} title="See More Button" />
+                <Badge className="text-[10px] bg-gradient-to-r from-violet-600 to-indigo-600 text-white border-0 shadow-sm flex items-center gap-1 px-2 py-0.5">
+                   <Star className="w-2.5 h-2.5 fill-current" /> PRO
+                </Badge>
+             </div>
              
              <div className="p-4 rounded-xl border border-slate-100 bg-slate-50 space-y-4">
                  <div className="space-y-2">
