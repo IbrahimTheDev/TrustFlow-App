@@ -925,7 +925,7 @@ const WallOfLoveContent = ({ customSpaceId }) => {
       animate={{ opacity: 1 }} 
       transition={{ duration: 0.3 }}
       ref={outerContainerRef} 
-      className="w-full relative group font-sans py-12 px-4 sm:px-6 lg:px-8" 
+      className="w-full relative group font-sans pt-4 pb-8 px-4 sm:px-6 lg:px-8" 
       style={{ minHeight: '100px', overflow: 'visible' }}
       // GLOBAL PAUSE HANDLER for entire area
       onMouseEnter={() => setIsPaused(true)}

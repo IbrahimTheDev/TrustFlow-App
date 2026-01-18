@@ -83,6 +83,7 @@ const SpaceOverview = () => {
   });
 
   const [widgetSettings, setWidgetSettings] = useState(DEFAULT_WIDGET_SETTINGS);
+  const [savedWidgetSettings, setSavedWidgetSettings] = useState(DEFAULT_WIDGET_SETTINGS); // Track what's saved in DB
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -145,6 +146,12 @@ const SpaceOverview = () => {
       }
 
       setWidgetSettings({
+        ...DEFAULT_WIDGET_SETTINGS,
+        ...fetchedWidgetSettings
+      });
+      
+      // Also save the DB version for comparison/discard
+      setSavedWidgetSettings({
         ...DEFAULT_WIDGET_SETTINGS,
         ...fetchedWidgetSettings
       });
@@ -427,6 +434,8 @@ const SpaceOverview = () => {
                 widgetSettings={widgetSettings}
                 setWidgetSettings={setWidgetSettings}
                 saveWidgetSettings={saveWidgetSettings}
+                savedWidgetSettings={savedWidgetSettings}
+                setSavedWidgetSettings={setSavedWidgetSettings}
                 setActiveTab={setActiveTab}
                 testimonials={testimonials}
               />

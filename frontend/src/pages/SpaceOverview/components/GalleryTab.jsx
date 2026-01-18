@@ -15,7 +15,7 @@ import {
   Briefcase, Check, ChevronRight, Star, Grid3X3,
   LayoutGrid, Play, Loader2, Layers, CreditCard, Heart,
   MessageSquare, MessageCircle, Video, Twitter, Quote, User, Clock, Building2,
-  BadgeCheck, Eye, Monitor
+  BadgeCheck, Eye, Monitor, Save, X, RotateCcw
 } from 'lucide-react';
 import { toast } from 'sonner';
 import confetti from 'canvas-confetti';
@@ -637,6 +637,8 @@ const GalleryTab = ({
   widgetSettings, 
   setWidgetSettings, 
   saveWidgetSettings,
+  savedWidgetSettings, // Pass saved settings from parent for comparison
+  setSavedWidgetSettings, // Update saved settings after save
   setActiveTab,
   testimonials = []
 }) => {
@@ -645,6 +647,8 @@ const GalleryTab = ({
   const [selectedLayoutCategory, setSelectedLayoutCategory] = useState('all');
   const [selectedComboCategory, setSelectedComboCategory] = useState('all');
   const [isApplying, setIsApplying] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   // Sample testimonial for preview
   const sampleTestimonial = testimonials[0] || {
@@ -910,37 +914,32 @@ const GalleryTab = ({
         throw new Error('Base preset not found');
       }
 
-      // Merge combo settings with preset settings and card style
+      // COMPLETELY REPLACE settings with preset settings + card style (no merge with old settings)
       const newSettings = {
-        ...widgetSettings,
-        ...basePreset.settings,
+        ...basePreset.settings,  // Start fresh with preset settings only
         presetId: combo.presetId,
         cardStyle: combo.cardStyle,
-        // Add custom heading/subheading if defined
-        ...(combo.customHeading && { customHeading: combo.customHeading }),
-        ...(combo.customSubheading && { customSubheading: combo.customSubheading })
+        // Override with combo's custom heading/subheading if defined
+        ...(combo.customHeading && { 
+          showHeading: true,
+          headingText: combo.customHeading,
+          customHeading: combo.customHeading 
+        }),
+        ...(combo.customSubheading && { 
+          showSubheading: true,
+          subheadingText: combo.customSubheading,
+          customSubheading: combo.customSubheading 
+        })
       };
 
       // Update local state immediately for instant preview
       setWidgetSettings(newSettings);
+      setHasUnsavedChanges(true);
 
-      // Save to database
-      await saveWidgetSettings(newSettings);
-
-      // Success feedback with confetti
-      confetti({
-        particleCount: 150,
-        spread: 80,
-        origin: { y: 0.6 },
-        colors: ['#f59e0b', '#f97316', '#8b5cf6', '#a78bfa', '#c4b5fd']
-      });
-
-      toast.success(`"${combo.name}" combo applied!`, {
-        description: 'Preset theme + card layout combined. Customize in Widget Designer.',
-        action: {
-          label: 'Edit Theme',
-          onClick: () => setActiveTab('widget')
-        }
+      // Light feedback (no confetti until saved)
+      toast.success(`"${combo.name}" combo previewing!`, {
+        description: 'Click "Save Changes" to apply to your live widget.',
+        duration: 3000
       });
 
     } catch (error) {
@@ -954,95 +953,127 @@ const GalleryTab = ({
   };
 
   // Handle Preset Selection & Apply
-  const handleApplyPreset = async (preset) => {
+  const handleApplyPreset = (preset) => {
     if (isApplying) return;
     
     setIsApplying(true);
 
     try {
-      // Merge preset settings with presetId tracking, keep existing cardStyle
+      // COMPLETELY REPLACE settings with preset settings (no merge with old settings)
+      // Only preserve current cardStyle so user can keep their card layout choice
+      const currentCardStyle = widgetSettings?.cardStyle || 'default';
+      
       const newSettings = {
-        ...widgetSettings,
-        ...preset.settings,
+        ...preset.settings,  // Start fresh with preset settings only
         presetId: preset.id,
-        cardStyle: widgetSettings?.cardStyle || 'default' // Preserve card style
+        cardStyle: currentCardStyle, // Preserve user's card layout choice
+        // If preset has custom heading/subheading, apply them
+        ...(preset.customHeading && { 
+          showHeading: true,
+          headingText: preset.customHeading,
+          customHeading: preset.customHeading 
+        }),
+        ...(preset.customSubheading && { 
+          showSubheading: true,
+          subheadingText: preset.customSubheading,
+          customSubheading: preset.customSubheading 
+        })
       };
 
-      // Update local state immediately for instant preview
+      // Update local state immediately for instant PREVIEW only
       setWidgetSettings(newSettings);
+      setHasUnsavedChanges(true);
 
-      // Save to database
-      await saveWidgetSettings(newSettings);
-
-      // Success feedback with confetti
-      confetti({
-        particleCount: 100,
-        spread: 70,
-        origin: { y: 0.6 },
-        colors: ['#8b5cf6', '#a78bfa', '#c4b5fd', '#7c3aed', '#6366f1']
-      });
-
-      toast.success(`"${preset.name}" preset applied!`, {
-        description: 'You can customize further in the Widget Designer tab.',
-        action: {
-          label: 'Edit Theme',
-          onClick: () => setActiveTab('widget')
-        }
+      // Light feedback (no confetti until saved)
+      toast.success(`"${preset.name}" preset previewing!`, {
+        description: 'Click "Save Changes" to apply to your live widget.',
+        duration: 3000
       });
 
     } catch (error) {
       console.error('Failed to apply preset:', error);
-      toast.error('Failed to apply preset', {
-        description: 'Please try again or check your connection.'
-      });
+      toast.error('Failed to apply preset');
     } finally {
       setIsApplying(false);
     }
   };
 
-  // Handle Card Layout Selection & Apply
-  const handleApplyCardLayout = async (layout) => {
+  // Handle Card Layout Selection & Apply (merges with current preset settings)
+  const handleApplyCardLayout = (layout) => {
     if (isApplying) return;
     
     setIsApplying(true);
 
     try {
-      // Update settings with new cardStyle
+      // Card layouts MERGE with current preset settings (only update cardStyle)
       const newSettings = {
         ...widgetSettings,
         cardStyle: layout.id
       };
 
-      // Update local state immediately
+      // Update local state immediately for preview
       setWidgetSettings(newSettings);
+      setHasUnsavedChanges(true);
 
-      // Save to database
-      await saveWidgetSettings(newSettings);
-
-      // Success feedback with confetti
-      confetti({
-        particleCount: 80,
-        spread: 60,
-        origin: { y: 0.7 },
-        colors: ['#10b981', '#34d399', '#6ee7b7', '#059669']
-      });
-
-      toast.success(`"${layout.name}" card style applied!`, {
-        description: 'Customize card appearance in Widget Designer tab.',
-        action: {
-          label: 'Edit Style',
-          onClick: () => setActiveTab('widget')
-        }
+      toast.success(`"${layout.name}" card style previewing!`, {
+        description: 'Click "Save Changes" to apply to your live widget.',
+        duration: 3000
       });
 
     } catch (error) {
       console.error('Failed to apply card layout:', error);
-      toast.error('Failed to apply card layout', {
-        description: 'Please try again or check your connection.'
-      });
+      toast.error('Failed to apply card layout');
     } finally {
       setIsApplying(false);
     }
+  };
+
+  // Handle Save Changes - saves to database
+  const handleSaveChanges = async () => {
+    if (isSaving) return;
+    
+    setIsSaving(true);
+    
+    try {
+      await saveWidgetSettings(widgetSettings);
+      
+      // Update saved settings in parent so Discard works correctly
+      if (setSavedWidgetSettings) {
+        setSavedWidgetSettings(widgetSettings);
+      }
+      
+      setHasUnsavedChanges(false);
+      
+      // Success confetti
+      confetti({
+        particleCount: 120,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ['#10b981', '#34d399', '#8b5cf6', '#a78bfa']
+      });
+      
+      toast.success('Changes saved!', {
+        description: 'Your widget is now live with the new settings.'
+      });
+    } catch (error) {
+      console.error('Failed to save changes:', error);
+      toast.error('Failed to save changes', {
+        description: 'Please try again.'
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Handle Discard Changes - revert to saved settings
+  const handleDiscardChanges = () => {
+    if (savedWidgetSettings) {
+      setWidgetSettings(savedWidgetSettings);
+    }
+    setHasUnsavedChanges(false);
+    toast.info('Changes discarded', {
+      description: 'Reverted to last saved settings.'
+    });
   };
 
   // Layout category options
@@ -1056,23 +1087,67 @@ const GalleryTab = ({
   ];
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      {/* Header */}
+    <div className="space-y-4 sm:space-y-6 relative">
+      {/* Floating Save Button - appears when there are unsaved changes */}
+      <AnimatePresence>
+        {hasUnsavedChanges && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            className="fixed bottom-6 right-6 z-50 flex items-center gap-2"
+          >
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDiscardChanges}
+              className="bg-white shadow-lg border-slate-300 hover:bg-slate-50"
+            >
+              <RotateCcw className="w-4 h-4 mr-1.5" />
+              Discard
+            </Button>
+            <Button
+              onClick={handleSaveChanges}
+              disabled={isSaving}
+              className="bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 text-white shadow-xl shadow-violet-500/30"
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-1.5" />
+                  Save Changes
+                </>
+              )}
+            </Button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Header with Unsaved Changes Indicator */}
       <div className="flex flex-col gap-3 sm:gap-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h2 className="text-xl sm:text-2xl font-bold text-slate-900 flex items-center gap-2">
               <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-violet-500" />
               Design Gallery
+              {hasUnsavedChanges && (
+                <Badge className="ml-2 bg-amber-500 text-white text-[9px] animate-pulse">
+                  UNSAVED
+                </Badge>
+              )}
             </h2>
             <p className="text-slate-500 text-xs sm:text-sm mt-1">
-              Choose presets and card layouts to transform your Wall of Love
+              Choose presets and card layouts • Changes preview instantly
             </p>
           </div>
           
           <div className="flex flex-wrap items-center gap-2">
             {currentPresetId && currentPresetId !== 'default' && (
-              <div className="flex items-center gap-1.5 sm:gap-2 bg-violet-50 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg">
+              <div className="flex items-center gap-1.5 sm:gap-2 bg-violet-50 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg border border-violet-200">
                 <Layers className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-violet-600" />
                 <span className="text-xs sm:text-sm text-violet-700 font-medium">
                   {getPresetById(currentPresetId)?.name || 'Custom'}
@@ -1080,7 +1155,7 @@ const GalleryTab = ({
               </div>
             )}
             {currentCardStyle && currentCardStyle !== 'default' && (
-              <div className="flex items-center gap-1.5 sm:gap-2 bg-emerald-50 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg">
+              <div className="flex items-center gap-1.5 sm:gap-2 bg-emerald-50 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg border border-emerald-200">
                 <CreditCard className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600" />
                 <span className="text-xs sm:text-sm text-emerald-700 font-medium">
                   {getCardLayoutById(currentCardStyle)?.name || 'Custom'}
@@ -1091,63 +1166,154 @@ const GalleryTab = ({
         </div>
       </div>
 
-      {/* Live Preview Section */}
-      <Card className="bg-gradient-to-br from-slate-50 via-white to-violet-50/30 border-slate-200 overflow-hidden">
-        <CardContent className="p-3 sm:p-6">
-          <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 items-center">
-            {/* Preview Info */}
-            <div className="flex-1 text-center lg:text-left">
-              <div className="flex items-center justify-center lg:justify-start gap-2 mb-2">
-                <Eye className="w-4 h-4 sm:w-5 sm:h-5 text-violet-500" />
-                <h3 className="font-semibold text-sm sm:text-base text-slate-900">Live Preview</h3>
+      {/* Live Preview Section - Redesigned with Preset + Card Preview */}
+      <Card className="bg-gradient-to-br from-slate-900 via-slate-800 to-violet-900 border-0 overflow-hidden shadow-2xl">
+        <CardContent className="p-4 sm:p-6">
+          <div className="flex flex-col lg:flex-row gap-6 items-stretch">
+            {/* Left Side - Preset Theme Preview */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-8 h-8 bg-violet-500/20 rounded-lg flex items-center justify-center">
+                  <Palette className="w-4 h-4 text-violet-400" />
+                </div>
+                <div>
+                  <h4 className="font-semibold text-white text-sm">Theme Preview</h4>
+                  <p className="text-[10px] text-slate-400">Current preset settings</p>
+                </div>
               </div>
-              <p className="text-xs sm:text-sm text-slate-500 mb-3">
-                This is how your testimonial cards will appear on your Wall of Love
-              </p>
-              <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2 text-[10px] sm:text-xs">
-                <Badge variant="outline" className="bg-white">
-                  <Monitor className="w-3 h-3 mr-1" />
-                  Card Style: {getCardLayoutById(currentCardStyle)?.name || 'Default'}
-                </Badge>
-                <Badge variant="outline" className="bg-white">
-                  Theme: {widgetSettings?.cardTheme === 'dark' ? 'Dark' : 'Light'}
-                </Badge>
+              
+              {/* Mini Theme Preview */}
+              <div className={`rounded-xl p-4 border ${widgetSettings?.cardTheme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                {/* Heading Preview */}
+                {(widgetSettings?.showHeading || widgetSettings?.headingText) && (
+                  <div className="text-center mb-3">
+                    <h5 
+                      className="text-sm font-bold truncate"
+                      style={{ 
+                        color: widgetSettings?.headingColor || (widgetSettings?.cardTheme === 'dark' ? '#fff' : '#1e293b'),
+                        fontFamily: widgetSettings?.headingFont || 'Inter'
+                      }}
+                    >
+                      {widgetSettings?.headingText || widgetSettings?.customHeading || 'Your Heading'}
+                    </h5>
+                    {(widgetSettings?.showSubheading || widgetSettings?.subheadingText) && (
+                      <p 
+                        className="text-[10px] truncate mt-1"
+                        style={{ 
+                          color: widgetSettings?.subheadingColor || (widgetSettings?.cardTheme === 'dark' ? '#94a3b8' : '#64748b'),
+                          fontFamily: widgetSettings?.subheadingFont || 'Inter'
+                        }}
+                      >
+                        {widgetSettings?.subheadingText || widgetSettings?.customSubheading || 'Your subheading'}
+                      </p>
+                    )}
+                  </div>
+                )}
+                
+                {/* Layout Preview */}
+                <div className="flex gap-2 justify-center">
+                  {widgetSettings?.layout === 'carousel' ? (
+                    <div className="flex items-center gap-1">
+                      {[0.6, 1, 0.6].map((opacity, i) => (
+                        <div 
+                          key={i} 
+                          className={`rounded ${widgetSettings?.cardTheme === 'dark' ? 'bg-slate-700' : 'bg-slate-100'}`}
+                          style={{ width: i === 1 ? 40 : 28, height: i === 1 ? 50 : 40, opacity }}
+                        />
+                      ))}
+                    </div>
+                  ) : widgetSettings?.layout === 'masonry' ? (
+                    <div className="flex gap-1">
+                      {[40, 50, 35].map((h, i) => (
+                        <div 
+                          key={i} 
+                          className={`w-6 rounded ${widgetSettings?.cardTheme === 'dark' ? 'bg-slate-700' : 'bg-slate-100'}`}
+                          style={{ height: h }}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-1">
+                      {[...Array(6)].map((_, i) => (
+                        <div 
+                          key={i} 
+                          className={`w-5 h-5 rounded ${widgetSettings?.cardTheme === 'dark' ? 'bg-slate-700' : 'bg-slate-100'}`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+                
+                {/* Settings Tags */}
+                <div className="flex flex-wrap gap-1 mt-3 justify-center">
+                  <span className={`text-[8px] px-1.5 py-0.5 rounded-full ${widgetSettings?.cardTheme === 'dark' ? 'bg-slate-700 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>
+                    {widgetSettings?.layout || 'grid'}
+                  </span>
+                  <span className={`text-[8px] px-1.5 py-0.5 rounded-full ${widgetSettings?.cardTheme === 'dark' ? 'bg-slate-700 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>
+                    {widgetSettings?.corners || 'smooth'}
+                  </span>
+                  <span className={`text-[8px] px-1.5 py-0.5 rounded-full ${widgetSettings?.cardTheme === 'dark' ? 'bg-slate-700 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>
+                    {widgetSettings?.shadow || 'medium'} shadow
+                  </span>
+                </div>
               </div>
             </div>
-            
-            {/* Live Card Preview */}
-            <motion.div 
-              key={`${currentCardStyle}-${widgetSettings?.cardTheme}-${widgetSettings?.corners}`}
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.3 }}
-              className="w-full sm:w-80 lg:w-72 xl:w-80 flex-shrink-0"
-            >
-              <LivePreviewCard />
-            </motion.div>
+
+            {/* Right Side - Card Preview */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-8 h-8 bg-emerald-500/20 rounded-lg flex items-center justify-center">
+                  <CreditCard className="w-4 h-4 text-emerald-400" />
+                </div>
+                <div>
+                  <h4 className="font-semibold text-white text-sm">Card Preview</h4>
+                  <p className="text-[10px] text-slate-400">How testimonials appear</p>
+                </div>
+              </div>
+              
+              <motion.div
+                key={`${currentCardStyle}-${currentPresetId}`}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.3 }}
+              >
+                <LivePreviewCard />
+              </motion.div>
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Section Tabs */}
+      {/* Section Tabs - Premium Styled */}
       <Tabs value={selectedSection} onValueChange={setSelectedSection} className="w-full">
-        <TabsList className="grid w-full max-w-xs sm:max-w-lg grid-cols-3 mb-4 sm:mb-6">
-          <TabsTrigger value="presets" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm">
-            <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            <span className="hidden sm:inline">Widget</span> Presets
-          </TabsTrigger>
-          <TabsTrigger value="cards" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm">
-            <CreditCard className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            <span className="hidden sm:inline">Card</span> Layouts
-          </TabsTrigger>
-          <TabsTrigger value="combos" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm">
-            <Layers className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            <span className="hidden sm:inline">Combo</span> Packs
-            <Badge className="hidden xs:flex ml-0.5 sm:ml-1 bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[7px] sm:text-[8px] px-1 py-0 border-0">
-              NEW
-            </Badge>
-          </TabsTrigger>
-        </TabsList>
+        <div className="bg-white/80 backdrop-blur-sm rounded-xl p-1 border border-slate-200 shadow-sm mb-4 sm:mb-6 inline-flex">
+          <TabsList className="bg-transparent gap-1 h-auto p-0">
+            <TabsTrigger 
+              value="presets" 
+              className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg data-[state=active]:bg-gradient-to-r data-[state=active]:from-violet-500 data-[state=active]:to-purple-500 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-violet-500/25 transition-all"
+            >
+              <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Widget</span> Presets
+            </TabsTrigger>
+            <TabsTrigger 
+              value="cards" 
+              className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg data-[state=active]:bg-gradient-to-r data-[state=active]:from-emerald-500 data-[state=active]:to-teal-500 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-emerald-500/25 transition-all"
+            >
+              <CreditCard className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Card</span> Layouts
+            </TabsTrigger>
+            <TabsTrigger 
+              value="combos" 
+              className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 sm:px-4 py-2 sm:py-2.5 rounded-lg data-[state=active]:bg-gradient-to-r data-[state=active]:from-amber-500 data-[state=active]:to-orange-500 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-amber-500/25 transition-all"
+            >
+              <Layers className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Combo</span> Packs
+              <Badge className="hidden xs:flex ml-0.5 sm:ml-1 bg-gradient-to-r from-rose-500 to-pink-500 text-white text-[7px] sm:text-[8px] px-1.5 py-0.5 border-0">
+                HOT
+              </Badge>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         {/* PRESETS SECTION */}
         <TabsContent value="presets" className="space-y-4 sm:space-y-6">
